@@ -1,0 +1,16 @@
+# LaTeX build artifacts
+.build/
+*.pdf
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.bbl
+*.blg
+
+# Editor temp files
+*~
+*.swp
+*.swo
