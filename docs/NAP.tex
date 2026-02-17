@@ -1,4 +1,6 @@
 \documentclass[11pt,oneside]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
 \usepackage{geometry}
 \usepackage{amsmath}
 \usepackage{amssymb}
@@ -17,24 +19,31 @@
 \onehalfspacing
 
 % Header/Footer
+\setlength{\headheight}{14pt}
 \pagestyle{fancy}
 \fancyhf{}
 \rhead{\thepage}
 \lhead{NAP: Two-Dimensional Inviscid Nozzle Flow}
 
-% Listings setup for Fortran
+% Listings setup for Fortran IV (Plain monospace, no syntax highlighting)
 \lstset{
-    language=Fortran,
+    language=,
     basicstyle=\ttfamily\small,
-    keywordstyle=\color{blue},
-    commentstyle=\color{gray}\itshape,
-    stringstyle=\color{red},
+    keywordstyle=\normalfont,
+    commentstyle=\normalfont,
+    stringstyle=\normalfont,
     breaklines=true,
     breakatwhitespace=true,
     tabsize=4,
     showstringspaces=false,
     numbers=left,
-    numberstyle=\tiny\color{gray},
+    numberstyle=\tiny,
+    inputencoding=utf8,
+    extendedchars=true,
+    frame=single,
+    framesep=2pt,
+    xleftmargin=5pt,
+    xrightmargin=5pt,
 }
 
 % Title Page Setup
@@ -101,7 +110,7 @@ Portions of this document may be illegible in electronic image products. Images 
 % Abstract
 \chapter*{ABSTRACT}
 
-A computer program, NAP, is presented for calculating inviscid, steady, and unsteady flow in two-dimensional and axisymmetric nozzles. Interior mesh points are computed using the MacCormack finite-difference scheme, while a characteristic scheme is used to calculate the boundary mesh points. An explicit artificial viscosity term is included for shock computations. The fluid is assumed to be a perfect gas. This method was used to compute the steady flow in a $45°$-$15°$ conical, converging-diverging nozzle, a $15°$ conical, converging nozzle, and a $10°$ conical, plug nozzle. The numerical solution agreed well with the experimental data. In contrast to previous time-dependent methods for calculating steady flows, the computational times were $< 1$ min on a CDC 6600 computer.
+A computer program, NAP, is presented for calculating inviscid, steady, and unsteady flow in two-dimensional and axisymmetric nozzles. Interior mesh points are computed using the MacCormack finite-difference scheme, while a characteristic scheme is used to calculate the boundary mesh points. An explicit artificial viscosity term is included for shock computations. The fluid is assumed to be a perfect gas. This method was used to compute the steady flow in a $45^{\circ}$-$15^{\circ}$ conical, converging-diverging nozzle, a $15^{\circ}$ conical, converging nozzle, and a $10^{\circ}$ conical, plug nozzle. The numerical solution agreed well with the experimental data. In contrast to previous time-dependent methods for calculating steady flows, the computational times were $< 1$ min on a CDC 6600 computer.
 
 \clearpage
 
@@ -474,7 +483,7 @@ Three nozzle geometries have been analyzed and serve as test cases:
 
 \subsection*{Case 1: Converging-Diverging Nozzle}
 
-A 45°--15° converging-diverging geometry with uniform inlet conditions at stagnation pressure $P_T = 13.78$ psia and temperature $T_T = 530$ °R. Results show excellent agreement with one-dimensional theory at the throat and quasi-2D behavior in the diverging section.
+A 45$^{\circ}$--15$^{\circ}$ converging-diverging geometry with uniform inlet conditions at stagnation pressure $P_T = 13.78$ psia and temperature $T_T = 530$ $^{\circ}$R. Results show excellent agreement with one-dimensional theory at the throat and quasi-2D behavior in the diverging section.
 
 \subsection*{Case 2: Converging Nozzle}
 
