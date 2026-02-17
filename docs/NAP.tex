@@ -374,37 +374,122 @@ Again, there is good agreement with the experimental data. The author is unaware
 A method of computing nozzle flows has been presented. A production-type computer program capable of solving a wide variety of nozzle flows has been developed. The program's accuracy was demonstrated by computing the steady flow in the three test cases above. The sub-one-minute computational times for these steady flows is considerably faster than for any of the earlier time-dependent techniques.
 
 % Part 2: Program Description
-\chapter{Description and Use of the NAP Program}
+\chapter{Program Description and Usage}
+\label{ch:usage}
 
-\section{Program Overview}
+\section{Program Structure}
 
-\textbf{[This section to be completed: Subroutine descriptions, input/output format, sample calculations]}
+The NAP computer program consists of one main program, one function, and twelve subroutines. The program structure follows this execution flow:
 
-\section{Subroutine Description}
+\begin{enumerate}
+  \item \textbf{Program MAIN:} Initiates the run by reading input data, printing the program title and abstract, and converting units. Calls geometry subroutines and performs the main time-stepping loop.
+  \item \textbf{GEOM and GEOMCB:} Calculate the nozzle geometry for fixed wall and optional centerbody configurations.
+  \item \textbf{ONEDIM:} Calculates the one-dimensional isentropic initial-value surface using a Newton-Raphson scheme to find Mach numbers from area ratios.
+  \item \textbf{MAP:} Calculates mapping functions that transform the physical plane to a rectangular computational plane.
+  \item \textbf{INTER:} Performs the interior mesh calculations using the MacCormack finite-difference scheme.
+  \item \textbf{INLET, WALL:} Implement boundary conditions using second-order characteristic-based schemes.
+  \item \textbf{MASFLO:} Calculates mass flow and thrust during the solution.
+  \item \textbf{PLOT:} Generates film plots of solution contours and velocity vectors.
+\end{enumerate}
 
-\subsection{Main Program}
+\section{Input Data Format}
 
-\textbf{[To be completed: Overview of main program structure and flow]}
+Input data are provided via Fortran NAMELIST format. The primary input namelists are:
 
-\subsection{Interior Mesh Point Calculation}
+\subsection*{NAMELIST /CNTRL/: Control Parameters}
 
-\textbf{[To be completed: Description of interior mesh routines]}
+Key parameters controlling the simulation:
 
-\subsection{Boundary Mesh Point Calculation}
+\begin{description}
+  \item[LMAX, MMAX] Grid dimensions ($\xi$ and $\eta$ directions)
+  \item[NMAX] Maximum number of time steps
+  \item[NPRINT] Print frequency (0 = final solution only, $n > 0$ = every $n$ steps)
+  \item[TCONV] Convergence criterion for steady-state detection
+  \item[FDT] Frequency for time-step recalculation
+  \item[TSTOP] Simulation stop time
+  \item[GAMMA] Specific heat ratio ($\gamma = 1.4$ for air)
+  \item[RGAS] Gas constant (53.35 for air in English units)
+  \item[NASM] Number of inlet stagnation point profiles (1 or $> 1$ for variable inlet conditions)
+  \item[IUNIT] Unit conversion flag (0 = English, 1 = SI)
+\end{description}
 
-\textbf{[To be completed: Description of inlet, exit, wall, and jet boundary routines]}
+\subsection*{NAMELIST /GEMTRY/: Geometry Parameters}
 
-\section{Input Data Description}
+Nozzle geometry definition:
 
-\textbf{[To be completed: Detailed input file format and parameters]}
+\begin{description}
+  \item[NDIM] Dimension flag (0 = 2D axisymmetric, 1 = 2D Cartesian)
+  \item[NGEOM] Geometry type (1 = converging, 2 = converging-diverging, 3 = plug)
+  \item[XI, XE] Inlet and exit axial coordinates
+  \item[RI, RE] Inlet and exit radii
+  \item[RCI, RCT, RCE] Centerbody inlet, throat, and exit radii (if centerbody present)
+  \item[ANGI, ANGE] Inlet and exit half-angles (degrees)
+  \item[NWPTS] Number of wall definition points
+\end{description}
+
+\subsection*{NAMELIST /BC/: Boundary Conditions}
+
+Inlet boundary condition parameters:
+
+\begin{description}
+  \item[PT] Stagnation pressure profile (array of NASM values)
+  \item[TT] Stagnation temperature profile (array of NASM values)
+  \item[THETA] Inlet flow angle profile (degrees)
+  \item[PE] Exit static pressure
+  \item[NSTAG] Stagnation profile flag (0 = uniform, $> 0$ = radial variation)
+  \item[ISUPER] Supersonic inlet flag (0 = subsonic, 1 = supersonic)
+\end{description}
 
 \section{Output Description}
 
-\textbf{[To be completed: Output file formats and result interpretation]}
+The program produces output in three forms:
+
+\subsection*{1. Printed Output}
+
+ASCII output containing:
+\begin{itemize}
+  \item Program header and version information
+  \item Echo of input parameters (CNTRL, GEMTRY, BC namelists)
+  \item Initial geometry and one-dimensional surface calculations
+  \item Iteration history with time, time-step size, and convergence measures (if requested)
+  \item Final solution statistics including mass flow, momentum, and thrust
+\end{itemize}
+
+\subsection*{2. Film Plots}
+
+Vector plots and contour plots on graphics film (if NPLOT $ \geq 0$):
+\begin{itemize}
+  \item Velocity vectors at each solution time
+  \item Contours of Mach number, pressure, density
+  \item Wall streamline positions
+\end{itemize}
+
+\subsection*{3. Punched Card Output (Optional)}
+
+Fortran unformatted binary restart deck for continuing previous runs.
 
 \section{Sample Calculations}
 
-\textbf{[To be completed: Step-by-step walkthrough of example calculations]}
+Three nozzle geometries have been analyzed and serve as test cases:
+
+\subsection*{Case 1: Converging-Diverging Nozzle}
+
+A 45°--15° converging-diverging geometry with uniform inlet conditions at stagnation pressure $P_T = 13.78$ psia and temperature $T_T = 530$ °R. Results show excellent agreement with one-dimensional theory at the throat and quasi-2D behavior in the diverging section.
+
+\subsection*{Case 2: Converging Nozzle}
+
+A simple 15° converging geometry with identical inlet conditions. Used to test subsonic inlet conditions and convergent-only nozzles.
+
+\subsection*{Case 3: Plug Nozzle}
+
+A complex plug nozzle configuration with variable centerbody. Comparison with experimental data of Bresnahan and Johns (Reference 18) shows good agreement in gross features including shock structure at off-design conditions.
+
+\medskip
+
+For detailed sample input and output listings, refer to the original NAP documentation. The program is controlled entirely via namelist input which provides flexibility for analyzing various nozzle configurations and inlet conditions.
+
+\medskip
+\noindent\textit{Note:} This chapter was reconstructed from OCR-extracted text and program code analysis. For production use, consult the original LASL technical documentation and verify input/output specifications with the actual Fortran source code listings in Appendix C.
 
 % Part 3: References
 \chapter*{References}
