@@ -1,6 +1,7 @@
 # LaTeX build artifacts
 .build/
 *.pdf
+!NAP-Milestone*.pdf
 *.aux
 *.log
 *.out
