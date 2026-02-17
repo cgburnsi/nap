@@ -25,6 +25,6 @@ Raw extracted text files:
 These are `pdftotext -layout` outputs and preserve table spacing reasonably well for follow-on parsing into CSV/Markdown tables.
 
 Structured table artifact:
-- `fig12_surface345_longtable.tex` (OCR-normalized high-confidence rows only)
-- Current row coverage: 136/186 expected rows (31 x 6 grid)
-- Omitted rows are low-confidence OCR parses retained in raw page extracts.
+- `fig12_surface345_longtable.tex` (OCR-normalized full 31 x 6 grid)
+- Current row coverage: 186/186 expected rows (31 x 6 grid)
+- Some rows on pages 40--41 required OCR interpretation for ambiguous digits/symbols; keep the raw page extracts for auditability.
