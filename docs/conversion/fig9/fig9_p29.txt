@@ -1,0 +1,21 @@
+CASE NO, 2 - CONVERGING NOZZLE (IS DEG INLET, PT/PE»2,0)
+ tCNTRL LNAX«2S,HHAX*7,NHAXa400,TCONV«e.eeS,FDT*l,a         S
+ SIVS   s
+ SGEMTRY NGEOH««,XIa*3,6,XEa0,0,JFLAGa|,LJET«20,
+ YWat.RJ,1,91103,1,05744,I,S030S,1,75026,t,6R667,1,64)06,l.SSRRR#I.S359,
+ 1.40231, 1,42672, 1,37513, 1,32154, 1,26795, 1,21436, 1,16077,1,1071 6, 1,05)59,
+ 1,0,1,01,1,02,1,03,1,04,
+ NXNYa0,0, 10*0,26795,4*«0,05     I
+ SGCBL    S
+ SBC PTa2S,0,TTa|80,0,PE«12,5       S
+
+
+
+
+                        Mg. 9.    Case No. 2 data deck.
+
+
+
+
+                                                                                    25
+
