@@ -4,6 +4,13 @@
                            February 16, 2024
 =============================================================================
 
+STATUS NOTE (2026-02-17):
+  This file is a historical milestone snapshot from 2024.
+  For current OCR cleanup and conversion progress, see:
+  - docs/CONVERSION_STATUS.md
+  - docs/conversion/worklog.md
+  - docs/conversion/fortran_ocr_ambiguities.md
+
 PROJECT TITLE: NAP (Nozzle Analysis Program)
 ORIGINAL AUTHOR: Michael C. Cline, Los Alamos Scientific Laboratory (1977)
 CONVERSION PROJECT: GitHub Repository Document Conversion Phase

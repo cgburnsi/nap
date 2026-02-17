@@ -1,5 +1,9 @@
 # NAP Document Conversion: Milestone 1 Complete
 
+> Status note (2026-02-17): This file is a historical milestone snapshot from 2024.
+> Current conversion status and OCR cleanup progress are tracked in `docs/CONVERSION_STATUS.md`,
+> `docs/conversion/worklog.md`, and `docs/conversion/fortran_ocr_ambiguities.md`.
+
 **Status: ✅ COMPLETE**  
 **Date: February 16, 2024**  
 **Document: NAP-Milestone1.pdf (52 pages, 412 KB)**

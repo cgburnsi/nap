@@ -11,6 +11,7 @@
 \usepackage{xcolor}
 \usepackage{fancyhdr}
 \usepackage{setspace}
+\usepackage{longtable}
 
 % Geometry
 \geometry{letterpaper, margin=1in}
@@ -502,6 +503,55 @@ A complex plug nozzle configuration with variable centerbody. Comparison with ex
 
 For detailed sample input and output listings, refer to the original NAP documentation. The program is controlled entirely via namelist input which provides flexibility for analyzing various nozzle configurations and inlet conditions.
 
+\subsection*{Case No. 3 Output (Converted from Original Fig. 12)}
+
+\noindent\textit{Editorial conversion note:} In the original report, Figure~12 is a multi-page line-printer output block (input summary, run progression, and solution-surface tables). In this conversion, it is represented as tabulated/listing content for readability and traceability rather than as a graphical figure.
+
+\subsubsection*{Run Progression (from Fig. 12 continuation page)}
+
+\begin{longtable}{|r|r|}
+\hline
+\textbf{Index} & \textbf{N} \\
+\hline
+1 & 90 \\
+2 & 100 \\
+3 & 110 \\
+4 & 120 \\
+5 & 130 \\
+6 & 140 \\
+7 & 150 \\
+8 & 160 \\
+9 & 170 \\
+10 & 180 \\
+11 & 190 \\
+12 & 200 \\
+13 & 210 \\
+14 & 220 \\
+15 & 230 \\
+16 & 240 \\
+17 & 250 \\
+18 & 260 \\
+19 & 270 \\
+20 & 280 \\
+21 & 290 \\
+22 & 300 \\
+23 & 310 \\
+24 & 320 \\
+25 & 330 \\
+26 & 340 \\
+\hline
+\end{longtable}
+
+\subsubsection*{Input Summary Listing (Original Fig. 12, first page)}
+
+\lstinputlisting[basicstyle=\footnotesize\ttfamily,breaklines=true,linewidth=\textwidth]{conversion/fig12/fig12_p36_ascii.txt}
+
+\subsubsection*{Solution Surface Output Listing (Original Fig. 12, pages 38--41)}
+
+\noindent\textit{Note:} OCR on pages 40--41 can read the surface number as ``395'' in the header, but the $L$ column continues monotonically from 1 to 31 and the reported times are effectively unchanged; this block is treated as one continued solution-surface output. A structured OCR-normalized table is provided below using high-confidence parsed rows (136 of 186 expected rows). Low-confidence rows remain in raw text extraction files under `docs/conversion/fig12/`.
+
+\input{conversion/fig12/fig12_surface345_longtable.tex}
+
 \medskip
 \noindent\textit{Note:} This chapter was reconstructed from OCR-extracted text and program code analysis. For production use, consult the original LASL technical documentation and verify input/output specifications with the actual Fortran source code listings in Appendix C.
 
@@ -568,6 +618,7 @@ For detailed sample input and output listings, refer to the original NAP documen
 \section{Main Program (fortran\_main.f)}
 
 This is the main program that orchestrates the NAP solver. It handles input/output, initialization, and time-stepping control.
+\noindent\textit{OCR note: this listing received a conservative normalization pass for obvious token errors; unresolved ambiguities are tracked in conversion notes.}
 
 \lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/fortran_main.f}
 
@@ -577,10 +628,12 @@ This is the main program that orchestrates the NAP solver. It handles input/outp
 
 \section{Inlet Boundary Conditions (inlet.f)}
 
+\noindent\textit{OCR note: this listing received a conservative normalization pass for obvious token errors; unresolved ambiguities are tracked in conversion notes.}
 \lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/inlet.f}
 
 \section{Wall Boundary Conditions (wall.f)}
 
+\noindent\textit{OCR note: this listing received a conservative normalization pass for obvious token errors; unresolved ambiguities are tracked in conversion notes.}
 \lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/wall.f}
 
 \section{Interior Mesh Calculations (inter.f)}
@@ -593,47 +646,55 @@ This is the main program that orchestrates the NAP solver. It handles input/outp
 
 \section{One-Dimensional Initialization (onedim.f)}
 
+\noindent\textit{OCR note: this listing received a conservative normalization pass for obvious token errors; unresolved ambiguities are tracked in conversion notes.}
 \lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/onedim.f}
 
 \section{Centerbody Geometry (geomcb.f)}
 
 This subroutine calculates the centerbody radius and slope for cases with a centerbody configuration. It is used in the GEOM routine for geometry preprocessing.
+\noindent\textit{OCR note: this listing was reconstructed from Appendix C PDF text blocks for readability; minor geometric/formatted-text normalization was required where scan quality was poor.}
 
 \lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/geomcb.f}
 
 \section{Table Interpolation (mtlup.f)}
 
 This subroutine performs multilinear interpolation on tabular input data. It is called by GEOM to interpolate geometry and flow properties from tables. This routine was adapted from a NASA-Langley program.
+\noindent\textit{OCR note: this listing was reconstructed from Appendix C PDF text blocks for readability; diagnostic/comment text literals were normalized where scan artifacts obscured wording.}
 
 \lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/mtlup.f}
 
 \section{Numerical Differentiation (diff.f)}
 
 This function calculates numerical derivatives for tabular input data. It is used by GEOM to compute nozzle wall slopes for the tabular input case, providing finite-difference approximations to derivatives.
+\noindent\textit{OCR note: this listing was reconstructed from Appendix C PDF text blocks for readability; comments were normalized while preserving the derivative computation logic.}
 
 \lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/diff.f}
 
 \section{Mapping Functions (map.f)}
 
 This subroutine calculates coordinate mapping functions, converting between physical $(x,y)$ coordinates and transformed $(\xi, \eta, \zeta)$ computational coordinates used in the finite-difference scheme.
+\noindent\textit{OCR note: this listing was replaced with a cleaner in-repo transcription and is currently the most readable available version.}
 
 \lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/map.f}
 
 \section{Artificial Viscosity (shock.f)}
 
 This subroutine calculates local artificial viscosity terms used to stabilize the solution across shock waves and steep gradients. Following the method of Lax and Wendroff, it provides controlled numerical dissipation to prevent oscillations.
+\noindent\textit{OCR note: this listing was reconstructed from Appendix C PDF text blocks for readability and aligned to Appendix C line blocks in the viscosity-energy term region.}
 
 \lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/shock.f}
 
 \section{Exit Boundary Conditions (exitt.f)}
 
 This subroutine calculates boundary mesh points at the nozzle exit. It implements the exit boundary condition calculation based on prescribed exit plane conditions (pressure, or characteristic relations for subsonic flow).
+\noindent\textit{OCR note: this listing was reconstructed from Appendix C PDF text blocks for readability and line-aligned to the degraded Appendix C compatibility-equation block.}
 
 \lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/exitt.f}
 
 \section{Visualization Output (plot.f)}
 
 This subroutine generates visualization output including velocity vector plots and contour plots of dependent variables (pressure, density, entropy). It creates plotter data for external visualization tools.
+\noindent\textit{OCR note: this listing was reconstructed from Appendix C PDF text blocks for readability; contour-cell intersection logic was restored from degraded scan lines with normalized fixed-form token syntax.}
 
 \lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/plot.f}
 

@@ -1,5 +1,20 @@
 # NAP Document Conversion
 
+## 2026-02-17 Update
+
+- Appendix C listings are now split into two confidence tiers:
+  - normalized OCR listings with conservative fixes (`map.f`, `fortran_main.f`, `inlet.f`, `wall.f`, `onedim.f`)
+  - reconstructed-from-PDF listings with explicit ambiguity/normalization notes (`exitt.f`, `shock.f`, `plot.f`, `geomcb.f`, `mtlup.f`, `diff.f`)
+- OCR ambiguity notes are now explicit in `docs/NAP.tex` at each affected listing section.
+- Detailed ambiguity tracker added: `docs/conversion/fortran_ocr_ambiguities.md`.
+- Conversion/design source-of-truth stubs added:
+  - `docs/conversion/spec.md`
+  - `docs/design/decisions.md`
+  - `docs/conversion/worklog.md`
+- Milestone 1 exit-gate assessment recorded as `PASS` in `docs/conversion/worklog.md`:
+  - no unresolved critical OCR ambiguities remain in Appendix C listings
+  - remaining notes are non-critical wording/format normalizations in degraded diagnostic FORMAT text
+
 ## Current Status: Milestone 1 (Draft LaTeX Template)
 
 This directory contains the ongoing conversion of Michael C. Cline's 1977 NAP (Nozzle Analysis Program) document from PDF to LaTeX and Markdown formats.
@@ -24,40 +39,23 @@ This directory contains the ongoing conversion of Michael C. Cline's 1977 NAP (N
   - All Fortran files are cataloged in NAP.tex appendices
   - Files: fortran_main.f, geom.f, inlet.f, inter.f, masflo.f, onedim.f, wall.f, etc.
 
-## Conversion Progress
+## Conversion Progress (Current Snapshot)
 
-### ✅ Completed (Milestone 1)
-- [x] Title page and disclaimer
-- [x] Abstract
-- [x] Chapter I: Basic Description of the Method
-  - [x] A. Introduction
-  - [x] B. Literature Review
-  - [x] C. Choice of a Method
-  - [x] D. Equations of Motion (with coordinate transformation)
-  - [x] E. Numerical Methods (Interior, Inlet, Exit, Wall, Jet boundary, Time step)
-  - [x] F. Overall Program Capabilities
-  - [x] G. Results and Discussion (all 3 test cases with figures)
-  - [x] H. Concluding Remarks
-- [x] Placeholder figures for all 4 nozzle geometry/results cases
-- [x] Table of relative machine speeds
-- [x] LaTeX document structure (report class, chapter organization)
-- [x] Cross-references and equation numbering
+### Done in current branch
+- Appendix C listings are now present in `docs/NAP.tex` with per-listing OCR notes.
+- OCR cleanup completed for normalized files:
+  - `map.f`, `fortran_main.f`, `inlet.f`, `wall.f`, `onedim.f`
+- OCR reconstruction completed for degraded files:
+  - `exitt.f`, `shock.f`, `plot.f`, `geomcb.f`, `mtlup.f`, `diff.f`
+- Ongoing decisions and ambiguity tracking now live in:
+  - `docs/conversion/worklog.md`
+  - `docs/conversion/fortran_ocr_ambiguities.md`
+  - `docs/design/decisions.md`
 
-### 🔄 In Progress (Stubs Created)
-- [ ] Chapter II: Description and Use of the NAP Program
-  - [ ] A. Subroutine Description (main, interior, boundary routines)
-  - [ ] B. Input Data Description
-  - [ ] C. Output Description
-  - [ ] D. Sample Calculations
-- [ ] Appendix A: Characteristic Relations ($\eta = \text{constant}$ plane)
-- [ ] Appendix B: Characteristic Relations ($\zeta = \text{constant}$ plane)
-- [ ] References (numbered list framework created, citations need to be filled)
-
-### ❌ Not Yet Started
-- [ ] Appendix C: Complete Fortran Code Listings (currently marked as placeholders)
-- [ ] Original figure images (currently using placeholder PNG files)
-- [ ] Section II detailed content extraction from PDF
-- [ ] Appendices A & B mathematical derivations
+### Remaining milestones for conversion
+- Validate all medium-confidence reconstructed listings against the PDF at equation/token level.
+- Synchronize Markdown output with canonical LaTeX content.
+- Replace placeholder figures for milestone-2 fidelity.
 
 ## What's Needed From You
 

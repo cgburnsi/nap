@@ -1,0 +1,64 @@
+CO
+IM                  NAP,   A COMPUTER PROGRAM FOR THE COMPUTATION OF TNO”DIMENSIONAL, TIME-DEPENDENT,                 INVISCID NOZZLE FLOW
+
+                                             BV MICHAEL C, CLINE,      t-I - LOS ALAMUS SCIENTIFIC LABORATORY
+
+
+
+               PROGRAM ABSTRACT -
+
+                                THE EQUATIONS OF MOTION FOR TMO-OIMEN3IONAL, TIME DEPENDENT, INVISCID FLOM IN A NOZZLE
+                           ARE SOLVED USING THE SECOND-ORDER, MACCORMACK, FINITE-DIFFERENCE SCHEME, THE FLUID IS ASSUMED
+                           TO BE A PERFECT GAS. ALL BOUNDARY CONDITIONS ARE COMPUTED USING A SECOND-ORDER, REFERENCE PLANE
+                           CHARACTERISTIC SCHEME, THE STEADY STATE SOLUTION IS OBTAINED AS THE ASYMPTOTIC SOLUTION FOR
+                           LARGE TIME, THE NUZZLES MAY BE EITHER CONVERGING, CONVERGING-DIVERGING, OH PLUG GEOMETRIES,
+
+
+               JOB TITLE -
+
+                           CASE NO. 3 - CONVERGING-DIVERGING, PLUG NOZZLE (10 DEG CONE, PT/PE«3,29)
+
+
+               CONTROL PARAMETERS -
+
+                           L MAX*31   MMAX* 6    NMAX* 400     NPRINT*   0   TCONV*  ,005      FDT * 1,60     NST AG*0    NASH*1       IUNIT*0
+                           IUI = 1    IUO* 1     lEXsl         NCONVI* 1     TST0P*1,00000     N1D* 1         NPLOT* -1   IPUNCH*0     ISUPER*0
+                           IAV*0      CAV* 5,0   XMU*1, 00     XLA*0,00      RKMU*  ,50        CT A* ,50      LSS* 2      SMP* ,95     NST*    0
+
+
+               FLUID MODEL -
+
+                           THE RATIO OF SPECIFIC HEATS, GAMMA «1,4000 AND THE GAS CONSTANT, R ■                 53,3500 (FT-LBF/LBM-R)
+
+
+               PLON GEOMETRY -
+
+                           AXISYMMETRIC FLON HAS BEEN SPECIFIED
+
+
+               NOZZLE GEOMETRY -
+
+                           A CONSTANT AREA DUCT HAS BEEN SPECIFIED BY XI> -4,4400 (IN), Rl«                 4,0000 (IN), AND XE*     2,9600 (IN)
+
+                           AN EXHAUST JET CALCULATION HAS BEEN REQUESTED,  THE NOZZLE ENDS AT X*   ,7400 (IN),  THE
+                           MESH POINTS L* 23 TO L* 31 ARE AN INITIAL APPROXIMATION TO THE EXHAUST JET BOUNDARY.
+
+                           A CIRCULAR-ARC, CONICAL CENTERBODY HAS BEEN SPECIFIED BY XlCB* -4,4400 (IN), RICB*  1,3000 (IN),
+                           RTCB* 3.3650 (IN), XECB*    2,9600 (IN), RCICB*   ,7500 (IN), RCTCB* 4,9500 (IN), ANGICB* 45,00 (DEG),
+                           AND ANGECB* 10,00 (DEG). THE: COMPUTED VALUES ARE XTCB* -.0143 (IN) AND RECB*  2,9170 (IN),
+
+
+               BOUNDARY CONDITIONS -
+
+                           PT* 100.0000 (PSIA)        TT*     10,0000 (F)     THETA*       0.0000 (DEG)         PE*   30,4000 (PSIA)
+     N*   10
+     N*   20
+     N*   30
+     N*   40
+     Ns   50
+     N*   60
+     N*   70
+     N*   00
+
+                                                             Fig. 12   Case No. 3 output
+

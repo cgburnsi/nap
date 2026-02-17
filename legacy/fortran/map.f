@@ -1,77 +1,36 @@
-
-SUBROUTINE MAPUP,l,M,*LBEfOE,LOI,*U,BEl,DEH
-O U O O O O (J
-
-c
-
-oo****o*=*o*o**=**=oooo*o***o*o*oo=**o**o**o**
-this
-
-subroutine
-
-calculates
-
-the
-
-mappins functions
-
-map
-
-MAP
-to***********************to****o=**o=*o*oo******o****
-
-map
-
-MAP
-COMMON /AV/ TAV,CAV,NST,SMP,LSS,eTA,XMU,XLA,RKMU,0UT(61'2ntQVT(fllMAP
-12I)=8PT(8|,?|)
-MAP
-COMMON /ONESID/ UD(4)>VD(=),PO(4)>ROD(A)
-MAP
-COMMON /SOLUTN/ U(fll21,?),V(81,21,2),P(R1,21,2),RO(81,21,?)
-MAP
-COMMON /CNTRLC/ LMAXMMAX,NMAX,NPRI NT,TCONV,EOT,GAMMA,RSAS,GANI,GAMAP
-lM2,LI,L2,LS,Ml,M2,0X,DY,DT,N,Nt,NS,NASM,IVEL,1CHAR,N1D,LJET,JFLAG,MAP
-21ERR,IUI,IUO,DXR,DVR,LD,MD,LMDt,LM03,IB,RSTAR,RSTARS,NPLOT,G,PC,TCMAP
-3,LC,PLOW,ROLOM
-MAP
-common /GEMTRYC/ NGEOM,XI,Rl,XT,RT,XE,RE,RCI,RCT,ANGI,ANGE,XN(81),MAP
-1YH(8!),XWI(81),YNI(8!),NXNY(81),NMPTS,IINT,IDIF,LT,NO1M
-MAP
-COMMON /GCB/ NGCB,XICB,RICB,XTCB,RTCB,XECB,RECB,RCICB,RCTCB,ANGICBMAP
-t,ANGECB,XCB(8n,YCB(8t),XCBI(ei),YCBI(81),NXNYCB(Bn,NCBPTS, IINTCBMAP
-2,IDIFCB,LECB
-MAP
-COMMON /BCC/ PT(21),TT(21),THETA(2i),PE,MASSE,MASS I,MASST, THRUST, NMAP
-1ST AG
-MAP
-REAL MN3,NXNY,MASSI,MASST,NXNYCB,MASSE
-MAP
-MAP
-be=i,0/(yn(l)'Ycb(L))
-map
-IF (IP,EO.B) RETURN
-Y(M1)0Y
-AL=BE*(NXNYCB(L)AY*(NXNY(L)*NXNYCB(L))>
-
-62
-
-MAP
-MAP
-MAP
-MAP
-
-MAP
-MAP
-MAP
-
-DEb>BE*Y*XHI(L)
-
-map
-
-IF (IP.EO.l) RETURN
-BEI|,0/(YN(LD1)*YCB(LD)))
-ALIiBEl*(NXNYCB(LDl)*Y*(NXNY(LD|)=NXNYCB(LDl)n
-DElB=BEt*Y*XMI(LOn
-RETURN
-END
+      SUBROUTINE MAP(IP,L,M,AL,BE,DE,LD1,AL1,BE1,DE1)                   MAP   10
+C                                                                       MAP   20
+C     **************************************************************    MAP   30
+C                                                                       MAP   40
+C	  THIS SUBROUTINE CALCULATES THE MAPPING FUNCTIONS                  MAP   50
+C                                                                       MAP   60
+C     **************************************************************    MAP   70
+C                                                                       MAP   80
+      COMMON /AV/ IAV,CAV,NST,SMP,LSS,CTA,XMU,XLA,RKMU,QUT(81,21),QVT(81MAP   90
+     1,21),QPT(81,21)                                                   MAP  100
+      COMMON /ONESID/ UD(4),VD(4),PD(4),ROD(4)                          MAP  110
+      COMMON /SOLUTN/ U(81,21,2),V(81,21,2),P(81,21,2),RO(81,21,2)      MAP  120
+      COMMON /CNTRLC/ LMAX,MMAX,NMAX,NPRINT,TCONV,FTD,GAMMA,RGAS,GAM1,GAMAP  130
+     1M2,L1,L2,L3,M1,M2,DX,DY,DT,N,N1,N3,NASM,IVEL,ICHAR,N1D,LJET,JFLAG,MAP  140
+     2IERR,IUI,IUO,DXR,DYR,LD,MD,LMND,LMD3,IB,RSTAR,RSTARS,NPLOT,G,PC,TCMAP  150
+     3,LC,PLOW,ROLOW                                                    MAP  160
+      COMMON /GEMTRYC/ NGEOM,XI,RI,XT,RT,XE,RE,RCI,RCT,ANGI,ANGE,XW(81),MAP  170
+     1YW(81),XWI(81),YWI(81),NXNY(81),NWPTS,IINT,IDIF,LT,NDIM           MAP  180
+      COMMON /GCB/ NGCB,XICB,RICB,XTCB,RTCB,XECB,RECB,RCICB,RCTCB,ANGICBMAP  190
+     2,ANGECB,XCB(81),YCB(81),XCBI(81),YCBI(81),NXNYCB(81),NCBPTS,IINTCBMAP  200
+     3,IDIFCB,LECB                                                      MAP  210
+      COMMON /BCC/ PT(21),TT(21),THETA(21),PE,MASSE,MASSI,MASST,THRUST,NMAP  220
+     1STAG                                                              MAP  230
+      REAL MN3,NXNY,MASSI,MASST,NXNYCB,MASSE                            MAP  240
+C                                                                       MAP  250
+      BE=1.0/(YW(L)-YCB(L))                                             MAP  260
+      IF (IP,EQ,0) RETURN                                               MAP  270
+      Y=(M-1)*DY                                                        MAP  280
+      AL=BE*(NXNYCB(L)+Y*(NXNY(L)-NXNYCB(L)))                           MAP  290
+      DE=-BE*Y*XWI(L)                                                   MAP  300
+      IF (IP,EQ,1) RETURN                                               MAP  310
+      BE1=1.0/(YW(LD1)-YCB(LD1))                                        MAP  320
+      AL1=BE1*(NXNYCB(LD1)+Y*(NXNY(LD1)-NXNYCB(LD1)))                   MAP  330
+      DE1=-BE1*Y*XWI(LD1)                                               MAP  340
+      RETURN                                                            MAP  350
+      END                                                               MAP  360
