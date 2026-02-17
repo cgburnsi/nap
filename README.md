@@ -1,12 +1,14 @@
-# kesten
+# nap
 
-A small, deterministic Python library for reproducing the steady-state numerical models described in A.S. Kesten (1968).
+A faithful document conversion project: reproducing Michael C. Cline's NAP (Nozzle Analysis Program, January 1977) in human-readable Markdown and LaTeX.
 
-## Current milestone
-- Milestone 1: quick, readable conversion of the original document and Fortran source
-- Milestone 2: production-grade faithful conversion of the original document and Fortran source
-- Milestone 3: completed baseline 1D reconstruction and regression gates
-- Milestone 4+: 2D solver reconstruction and verification against Kesten reference outputs
+## Current phase: Document Conversion
+We are focused **exclusively** on converting the original NAP document and its associated Fortran source code into accessible, readable formats.
+
+**Milestone 1:** Quick, readable Markdown conversion  
+**Milestone 2:** Production-grade faithful conversion with LaTeX as canonical format
+
+After document conversion is complete and verified, solver implementation will begin in a separate roadmap.
 
 ## Current phase workflow
 - Conversion rules: `docs/conversion/spec.md`
@@ -25,31 +27,21 @@ A small, deterministic Python library for reproducing the steady-state numerical
 - Decision history: `docs/design/decisions.md`
 
 ## Repository layout
-- `src/` core library code
-- `app/` command-line entry points
-- `tests/` unittest test suite
-- `examples/` minimal runnable examples
-- `docs/` design and verification notes
-- `tools/` helper scripts
+- `docs/references/` - original reference documents
+- `docs/conversion/` - conversion rules, specs, and progress tracking
+- `docs/design/` - design decisions and architectural notes
+- `legacy/` - early drafts and reference implementations
 
 ## Local setup
 ```sh
 python -m venv .venv
 source .venv/bin/activate
-pip install -U pip
-pip install numpy matplotlib
-```
+# Clone the repo
+git clone <repo-url>
+cd nap
 
-## Run tests
-```sh
-python -m unittest discover -s tests -v
-```
-
-## Run example
-```sh
-python examples/ex01_minimal_solver.py
-```
-
+# No dependencies required for document conversion
+# (Python not needed unless code is generated)
 ## Run baseline regression example
 ```sh
 python examples/ex02_baseline_regression.py
