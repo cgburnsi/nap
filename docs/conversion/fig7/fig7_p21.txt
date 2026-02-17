@@ -1,0 +1,13 @@
+CASE NO, J - CONVERGING-DIVERGING NOIZLE (05 DEG INLET, 15 DEG EXIT)
+ SCNTRL LMAX*21,MMAXafl,NMAX*R00,TC0NV»0,005,FDT»1,6     S
+ SIVS   S
+ SGEHTRY NGEOM*2,XI»HtJl,RI*?,5,RT*0,8,XE«fl,f'5,RCI«0,8,RCT»0,5, ANGI*«a,88,
+ ANGEb1S,0   S
+ SGCBL   S
+ SBC PTB70,0,TTBft0,0      S
+
+
+
+
+                        Fig. 7.   Case No. 1 data deck.
+
