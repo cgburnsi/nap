@@ -595,6 +595,48 @@ This is the main program that orchestrates the NAP solver. It handles input/outp
 
 \lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/onedim.f}
 
+\section{Centerbody Geometry (geomcb.f)}
+
+This subroutine calculates the centerbody radius and slope for cases with a centerbody configuration. It is used in the GEOM routine for geometry preprocessing.
+
+\lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/geomcb.f}
+
+\section{Table Interpolation (mtlup.f)}
+
+This subroutine performs multilinear interpolation on tabular input data. It is called by GEOM to interpolate geometry and flow properties from tables. This routine was adapted from a NASA-Langley program.
+
+\lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/mtlup.f}
+
+\section{Numerical Differentiation (diff.f)}
+
+This function calculates numerical derivatives for tabular input data. It is used by GEOM to compute nozzle wall slopes for the tabular input case, providing finite-difference approximations to derivatives.
+
+\lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/diff.f}
+
+\section{Mapping Functions (map.f)}
+
+This subroutine calculates coordinate mapping functions, converting between physical $(x,y)$ coordinates and transformed $(\xi, \eta, \zeta)$ computational coordinates used in the finite-difference scheme.
+
+\lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/map.f}
+
+\section{Artificial Viscosity (shock.f)}
+
+This subroutine calculates local artificial viscosity terms used to stabilize the solution across shock waves and steep gradients. Following the method of Lax and Wendroff, it provides controlled numerical dissipation to prevent oscillations.
+
+\lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/shock.f}
+
+\section{Exit Boundary Conditions (exitt.f)}
+
+This subroutine calculates boundary mesh points at the nozzle exit. It implements the exit boundary condition calculation based on prescribed exit plane conditions (pressure, or characteristic relations for subsonic flow).
+
+\lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/exitt.f}
+
+\section{Visualization Output (plot.f)}
+
+This subroutine generates visualization output including velocity vector plots and contour plots of dependent variables (pressure, density, entropy). It creates plotter data for external visualization tools.
+
+\lstinputlisting[language=Fortran,basicstyle=\tiny\ttfamily,breaklines=true,linewidth=\textwidth]{../legacy/fortran/plot.f}
+
 \appendix
 
 \chapter{Characteristic Relations: $\eta$ Constant Plane}
