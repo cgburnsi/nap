@@ -262,15 +262,15 @@ l=I>)
 MTL
 VCl)*VARI(t)X
 MTL
-V(2)■VARI(L+1JX
+V(2)?VARI(L+1JX
 MTL
 V(3)=VARI(L+2)*X
 MTL
 DO )60 NT=I,NTAB
 MTL
-rY(l)(VARD(l,NT)*V(2)-VARDa*l,NTlV(l))/(VARI(ltl).¥ARia))
+rY(l)(VARD(l,NT)*V(2)-VARDa*l,NTlV(l))/(VARI(ltl).JPYARia))
 MTL
-YY(2)=(VARD(L*I*NT)*V(3)*VARO(t + 2#NTl*V(2))/C¥ARI(LA2)'VARI(Ltl )) MTL
+YY(2)=(VARD(L*I*NT)*V(3)*VARO(t + 2#NTl*V(2))/CJPYARI(LA2)'VARI(Ltl )) MTL
 Y{NT)(YY(1)6V(3)YY(2)*V(1))/(VARI(L2)-VARI(L))
 MTL
 IF (EX) IIMN
