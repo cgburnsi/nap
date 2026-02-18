@@ -1,0 +1,24 @@
+Input: docs/conversion/fig8/fig8_surface301_longtable.tex
+Rows parsed: 167
+Parse issues: 1
+Missing (L,M) pairs: 1
+Duplicate (L,M) pairs: 0
+Outliers in X (|z|>4): 0
+Outliers in Y (|z|>4): 1
+Outliers in U (|z|>4): 0
+Outliers in V (|z|>4): 0
+Outliers in P (|z|>4): 1
+Outliers in RHO (|z|>4): 1
+Outliers in Q (|z|>4): 2
+Outliers in Mach (|z|>4): 2
+Outliers in T (|z|>4): 1
+Missing pairs: [(10, 5)]
+Outlier rows for Y (0-based in parsed_table.csv): 61
+Outlier rows for P (0-based in parsed_table.csv): 61
+Outlier rows for RHO (0-based in parsed_table.csv): 61
+Outlier rows for Q (0-based in parsed_table.csv): 107, 108
+Outlier rows for Mach (0-based in parsed_table.csv): 107, 108
+Outlier rows for T (0-based in parsed_table.csv): 71
+
+Parse issues (line_no | reason | raw):
+87 | float_parse_error=could not convert string to float: '66.207-' | 10 & 5 & 1.9930 & 0.6589 & 373.7604 & -142.2246 & 63.7957 & 0.327237 & 399.9133 & 0.3556 & 66.207- \ \ \\

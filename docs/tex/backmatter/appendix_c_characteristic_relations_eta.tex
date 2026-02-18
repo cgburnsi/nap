@@ -1,0 +1,58 @@
+\appendix
+
+\chapter{Characteristic Relations: $\eta$ Constant Plane}
+\label{app:char-eta}
+
+\section*{Introduction}
+
+This appendix derives the characteristic relations for the $\eta = \text{constant}$ reference plane. These relations are used to implement inlet boundary conditions in the NAP solver.
+
+\section*{I. Equations of Motion}
+
+The equations of motion can be written in the form:
+
+\begin{align}
+\frac{\partial P}{\partial t} + u\frac{\partial P}{\partial \xi} + v\frac{\partial P}{\partial \eta} &= -vP_{\eta} - pa u_{\xi} - pBv_{\xi} - \frac{epvB}{n} \label{eq:A1} \\
+\frac{\partial u}{\partial t} + u\frac{\partial u}{\partial \xi} + \frac{P_{\xi}}{p} &= -vu_{\eta} - ap_{\xi}/p \label{eq:A2} \\
+\frac{\partial v}{\partial t} + uv_{\xi} + \frac{BP_{\eta}}{p} &= -vv_{\eta} - \frac{eP_{\eta}}{p} \label{eq:A3} \\
+\frac{\partial P}{\partial t} + up_{\xi} - a^2\left(\frac{\partial P}{\partial t} + u\frac{\partial P}{\partial \xi}\right) &= -vP_{\eta} + a^2 v p_{\eta} \label{eq:A4}
+\end{align}
+
+\section*{II. Characteristic Curves}
+
+The characteristic curves are derived from analysis of the system's hyperbolicity:
+
+\begin{align}
+\frac{d\eta}{dT} &= v \label{eq:char-eta-1}\\
+\frac{d\eta}{dx} &= \frac{\partial \eta}{\partial x} \label{eq:char-eta-2}
+\end{align}
+
+\section*{III. Characteristic Variables}
+
+Define the characteristic variables:
+
+\begin{align}
+\psi_1 &= vP_{\xi} - p a u_{\xi} - pBv_{\xi} - \frac{epvB}{n} \label{eq:psi1} \\
+\psi_2 &= -v u_{\xi} - a P_{\xi}/p \label{eq:psi2}\\
+\psi_3 &= -v v_{\xi} - \frac{eP_{\xi}}{p} \label{eq:psi3}\\
+\psi_4 &= -v P_{\xi} + a^2 v P_{\xi} \label{eq:psi4}
+\end{align}
+
+\section*{IV. Compatibility Equations}
+
+Substituting the characteristic equations yields compatibility relations. For the characteristic curve with slope $d\eta = (u - a)dT$:
+
+\begin{equation}
+dp - \rho a du = (\psi_2 + 2\psi_1 - \rho a\psi_2) dT \label{eq:compat-minus}
+\end{equation}
+
+For the characteristic curve with slope $d\eta = (u + a)dT$:
+
+\begin{equation}
+dp + \rho a du = (\psi_4 + 2\psi_1 + \rho a\psi_2) dT \label{eq:compat-plus}
+\end{equation}
+
+These relations provide the basis for implementing inlet boundary conditions through the method of characteristics.
+
+\medskip
+\noindent\textit{Note:} Technical content in this appendix was extracted via OCR from the original NAP document. Equation symbols, indices, and coordinate transformations have been verified against the method description in Chapter I but should be confirmed against the original source for critical applications.

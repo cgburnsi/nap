@@ -1,0 +1,44 @@
+\chapter{Characteristic Relations: $\zeta$ Constant Plane}
+\label{app:char-zeta}
+
+\section*{Introduction}
+
+This appendix derives the characteristic relations for the $\zeta = \text{constant}$ reference plane. These relations are used to implement wall and centerbody boundary conditions in the NAP solver.
+
+\section*{I. Equations of Motion}
+
+The equations of motion for the $\zeta$-plane are:
+
+\begin{align}
+\frac{\partial P}{\partial t} + v\frac{\partial P}{\partial \eta} + \rho a u_{\eta} + \rho B v_{\eta} &= -u P_{\xi} - \rho u_{\xi} - \frac{epvB}{n} \label{eq:B1} \\
+\frac{\partial u}{\partial t} + v u_{\eta} + \frac{a P_{\eta}}{\rho} &= -u u_{\xi} - \frac{P_{\xi}}{\rho} \label{eq:B2}\\
+\frac{\partial v}{\partial t} + v v_{\eta} + \frac{BP_{\eta}}{\rho} &= -u v_{\xi} \label{eq:B3}\\
+\frac{\partial P}{\partial t} + v P_{\eta} - a^2\left(\frac{\partial P}{\partial t} + v\frac{\partial P}{\partial \eta}\right) &= -u P_{\xi} + a^2 u P_{\xi} \label{eq:B4}
+\end{align}
+
+\section*{II. Characteristic Curves}
+
+Following the development of Appendix A, the characteristic curves for the $\zeta$-plane are:
+
+\begin{align}
+\frac{d\zeta}{dT} &= v \label{eq:char-zeta-1}\\
+\frac{d\zeta}{dx} &= v \pm a^* a \label{eq:char-zeta-2}
+\end{align}
+
+where $a^* = (a^2 + B^2)^{1/2}$ represents the effective sound speed in the transformed coordinate system.
+
+\section*{III. Compatibility Equations}
+
+The compatibility equations for the $\zeta$-constant plane are:
+
+\begin{align}
+a du - \rho dv &= (\psi_0 - a\psi_1) dT \label{eq:compat-zeta-1}\\
+dp - a^2 d\rho &= \psi_4 d\xi \label{eq:compat-zeta-2}\\
+dp - \rho a^2 \frac{du}{a^*} - \rho B a \frac{dv}{a^*} &= \left(\psi_2 + a\psi_1 - \frac{\rho a a\psi_0}{a^*} - \frac{\rho B a \psi_1}{a^*}\right) dT \label{eq:compat-zeta-3}\\
+dp + \rho a^2 \frac{du}{a^*} + \rho B a \frac{dv}{a^*} &= \left(\psi_3 + a\psi_1 + \frac{\rho a a\psi_0}{a^*} + \frac{\rho B a\psi_1}{a^*}\right) dT \label{eq:compat-zeta-4}
+\end{align}
+
+These compatibility equations apply along the characteristic curves and provide the boundary condition implementation for wall and centerbody surfaces.
+
+\medskip
+\noindent\textit{Note:} Technical content in this appendix was extracted via OCR from the original NAP document and reconstructed using the methods described in Chapter I.E. Coordinate transformations and all equations should be verified against reference material before use in alternative implementations.

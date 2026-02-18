@@ -1,0 +1,17 @@
+Input: docs/conversion/fig8/fig8_surface301_longtable.tex
+Rows parsed: 168
+Parse issues: 0
+Missing (L,M) pairs: 0
+Duplicate (L,M) pairs: 0
+Outliers in X (|z|>4): 0
+Outliers in Y (|z|>4): 0
+Outliers in U (|z|>4): 0
+Outliers in V (|z|>4): 0
+Outliers in P (|z|>4): 0
+Outliers in RHO (|z|>4): 0
+Outliers in Q (|z|>4): 2
+Outliers in Mach (|z|>4): 2
+Outliers in T (|z|>4): 1
+Outlier rows for Q (0-based in parsed_table.csv): 108, 109
+Outlier rows for Mach (0-based in parsed_table.csv): 108, 109
+Outlier rows for T (0-based in parsed_table.csv): 71

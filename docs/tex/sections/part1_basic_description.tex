@@ -1,0 +1,252 @@
+% Part 1: Basic Description of Method
+\chapter{Basic Description of the Method}
+
+\section{Introduction}
+
+The equations of motion governing steady, inviscid flow are of a mixed type: hyperbolic in the supersonic region and elliptic in the subsonic region. These mathematical difficulties may be removed by using the ``time-dependent'' method, in which the flow is assumed to be unsteady or time-dependent. Then the governing equations are hyperbolic in both subsonic and supersonic regions. The steady-state solution may be obtained as the asymptotic solution for large time. This time-dependent technique has been used to compute steady converging-diverging nozzle flows (reported in Refs. 1--6), and it has also been used to compute steady converging nozzle flows (see Refs. 4 and 7). The results of those calculations are mainly good, but the computational times are rather large. In addition, although the computer program of Ref. 6 included a centerbody and those of Refs. 4 and 7 included the exhaust jet, none of the above codes is able to calculate both, that is, plug nozzles.
+
+The object of this research was to develop a production-type computer program capable of solving steady converging, converging-diverging, and plug two-dimensional nozzle flows in computational times of $< 1$ min on a CDC 6600 computer. Such a program would be able to solve unsteady flows as well.
+
+\section{Literature Review}
+
+The following is a discussion of the methods used in References 1 through 7. The first paragraph deals with the computation of the interior mesh points; the next three paragraphs are concerned with the boundary mesh points.
+
+Prozan (see Ref. 1), Wehofer and Moger, and Laval used variations of the two-step Lax-Wendroff scheme to compute the interior mesh points. Migdal \textit{et al.} and Brown and Ozcan employed the original one-step Lax-Wendroff scheme, but with the equations of motion in nonconservation form. Serra applied the original Lax-Wendroff scheme with the equations of motion in conservation form. To stabilize their schemes, Laval and Serra used artificial viscosity terms in their difference equations. Wehofer and Moger reset the stagnation conditions along each streamline, reset the mass flow at each axial location, and smoothed the subsonic portion of the flow after each time step.
+
+To compute the nozzle inlet mesh points, Prozan (in Ref. 1) assumed the inlet flow to be uniform. Wehofer and Moger assumed only that the pressure was radially uniform at the inlet. Migdal \textit{et al.} and Brown and Ozcan mapped the inlet to minus infinity after Moretti, thus allowing the static conditions to be set equal to the stagnation conditions. Laval used extrapolation of the interior mesh points to determine the inlet mesh points, while Serra employed a characteristic scheme.
+
+Prozan (in Ref. 1), Wehofer and Moger, Laval, and Brown and Ozcan used an extrapolation technique to compute the wall mesh points. Migdal \textit{et al.} employed a characteristic scheme after Moretti to compute the wall mesh points, while Serra applied a reflection technique. For the converging nozzle problem to be properly posed, an exhaust jet calculation must be included. Wehofer and Moger used an extrapolation procedure to compute the exhaust jet boundary mesh points, while Brown and Ozcan employed a characteristic scheme after Moretti.
+
+All of the above authors used extrapolation to compute the exit mesh points when the flow was supersonic, since any errors incurred would be swept out of the mesh. Serra employed a characteristic scheme when the exit flow was subsonic.
+
+\section{Choice of a Method}
+
+The lengthy computational times associated with time-dependent calculations are usually caused by inefficient numerical schemes or poor treatment of boundaries, resulting in the requirement for excessively fine computational meshes (see Refs. 8 and 9). A technique for a much more efficient calculation of the interior and boundary mesh points will be discussed here.
+
+The computation of steady flows by a time-dependent method differs from ordinary initial-value problems in that the initial data and much of the transient solution have a negligible effect on the final or steady solution. Therefore, accuracy is important only for the asymptotic state, and special attention to intermediate efficiency will result in reasonable computational times. For this reason, interior mesh points can be computed by using a very efficient finite-difference scheme, as opposed to those less efficient finite-difference or characteristic schemes that achieve high accuracy at every step.
+
+In the class of finite-difference schemes, the two-step methods such as the MacCormack and the two-step Lax-Wendroff schemes are more efficient than the original Lax-Wendroff scheme, especially if the governing equations are in conservation form. Moretti showed that using the equations of motion in conservation form decreased efficiency and ease of programming while only slightly increasing the accuracy of shock calculations. The use of an explicit artificial viscosity term for shock-free flows also decreases efficiency and was shown to be physically unjustified. In addition, such increases in the numerical dissipation can often destroy the weak shock structure of transonic flows. Therefore, the MacCormack scheme with the equations of motion in nonconservation form is used to calculate the interior mesh points. An explicit artificial viscosity term was included for shock computations only. Remember that the implicit dissipation always present as an effect of truncation terms assures numerical stability for the shock-free flow results.
+
+The boundary mesh points, while making up only a small part of the total mesh points, must be handled most accurately, because of the flowfield's sensitivity to precise boundary geometry. Moretti and Abbett showed that reflection, extrapolation, and one-sided difference techniques for computing solid wall boundaries give poor results and should be avoided. Therefore, the wall and centerbody mesh points are computed using a characteristic scheme. A characteristic scheme is also used to calculate the exhaust jet boundary mesh points.
+
+In the case of the nozzle inlet mesh points for subsonic flow, the use of extrapolation techniques and the assumption of one-dimensional flow presume the form of the solution and in many cases are physically unjustified. On the other hand, a characteristic scheme could be used to calculate the inlet mesh points. While the stagnation pressure and temperature are assumed to remain constant at the inlet in a characteristic scheme (not necessarily the case for unsteady flow), this assumption would appear to be valid for the time-dependent calculation of steady flows. Moretti recommends mapping the inlet to minus infinity, thus allowing the static conditions to be set equal to the stagnation conditions. In theory, this appears to be the best approach, but it should be kept in mind that the infinite physical plane must be replaced by a finite computational plane. Also, this technique requires additional mesh points upstream of the nozzle inlet. It is not presently resolved as to whether the characteristic scheme approach used by Serra or the mapping-to-minus-infinity approach suggested by Moretti and employed by Migdal \textit{et al.} and Brown and Ozcan is the best technique. To reduce the total number of mesh points to be computed, a characteristic scheme is used to compute the inlet mesh points. For supersonic flow, the inlet mesh points are set equal to specified values of velocity, pressure, and density, because in a supersonic stream the downstream conditions do not propagate upstream. Extrapolation is used to compute the exit mesh points when the flow is supersonic, since any errors incurred will be swept out of the mesh, and a characteristic scheme is employed when the flow is subsonic.
+
+\section{Equations of Motion}
+
+The appropriate non-conservation form of equations for two-dimensional, inviscid, isentropic, rotational flow are:
+
+\begin{align}
+\rho_t + u\rho_x + v\rho_y + \rho u_x + \rho v_y + \epsilon \rho v / y &= 0 \label{eq:continuity}\\
+u_t + u u_x + v u_y + p_x/ \rho &= 0 \label{eq:momentum_x}\\
+v_t + u v_x + v v_y + p_y/ \rho &= 0 \label{eq:momentum_y}\\
+p_t + u p_x + v p_y - a^2(\rho_t + u \rho_x + v\rho_y) &= 0 \label{eq:energy}
+\end{align}
+
+where $\rho$ is the density, $u$ is the axial velocity, $v$ is the radial velocity, $p$ is the pressure, $a$ is the local speed of sound, $t$ is the time, $x$ and $y$ are the axial and radial coordinates, and the subscripts denote partial differentiation. The symbol $\epsilon$ is 0 for planar flow and 1 for axisymmetric flow.
+
+\subsection{Coordinate Transformation}
+
+The physical $(x,y)$ plane is mapped into a rectangular computational plane $(\zeta,\eta)$ by the following coordinate transformation:
+
+\begin{equation}
+\zeta = x; \quad \eta=\frac{y - y_c(x)}{y_w(x,t) - y_c(x)}; \quad \tau=t
+\label{eq:transform}
+\end{equation}
+
+where $y_w(x,t)$ denotes the nozzle wall and exhaust jet boundary radius as a function of $x$ and $t$ and $y_c(x)$ denotes the nozzle centerbody radius as a function of $x$. These mapping functions must be single-valued functions of the $x$ coordinate. In the $(\zeta, \eta, \tau)$ coordinate system Equations~\eqref{eq:continuity}--\eqref{eq:energy} become:
+
+\begin{align}
+\rho_\tau + u\rho_\zeta + \bar{v}\rho_\eta + \rho u_\zeta + \rho\alpha u_\eta + \rho \beta v_\eta + \epsilon \rho v/(y_c + \eta/ \beta) &= 0 \\
+u_\tau +u u_\zeta + \bar{v} u_\eta + p_\zeta / \rho + \alpha p_\eta / \rho &= 0\\
+v_\tau + u v_\zeta + \bar{v} v_\eta + \beta p_\eta / \rho &= 0\\
+p_\tau + u p_\zeta + \bar{v} p_\eta - a^2(\rho_\tau + u \rho_\zeta + \bar{v}\rho_\eta) &= 0
+\end{align}
+
+where
+
+\begin{align}
+\beta &= \frac{1}{y_w - y_c}\\
+\alpha &= -\beta\frac{\partial y_c}{\partial x} - \left(\frac{\partial y_w}{\partial x} - \frac{\partial y_c}{\partial x}\right)\\
+\delta &= -\eta\beta\frac{\partial y_w}{\partial t}
+\end{align}
+
+and
+
+\begin{equation}
+\bar{v} = \alpha u + \beta v + \delta
+\end{equation}
+
+The fluid is assumed to be thermally and calorically perfect; that is, a constant ratio of specific heats is assumed.
+
+\subsection{Artificial Viscosity for Shock Computations}
+
+For shock computations, an artificial viscosity model of the form suggested by von Neumann-Richtmyer is used. This model, which has a term corresponding to all the viscous and thermal conduction terms in the Navier-Stokes equations, is shown below.
+
+\begin{equation}
+\text{[RHS Eq. (2)]} = (\lambda+2\mu)\frac{\partial}{\partial x}\left(\frac{\partial u}{\partial x}\right) + \lambda\frac{\partial}{\partial x}\left(\frac{\partial v}{\partial y}\right) + \frac{\epsilon}{y}\left[(\lambda + \mu)\frac{\partial v}{\partial x}+\mu\frac{\partial u}{\partial y}\right]
+\label{eq:visc_x}
+\end{equation}
+
+\begin{equation}
+\text{[RHS Eq. (3)]} = (\lambda+2\mu)\frac{\partial}{\partial y}\left(\frac{\partial u}{\partial x}\right) + \lambda\frac{\partial}{\partial y}\left(\frac{\partial v}{\partial y}\right) + \mu\frac{\partial}{\partial x}\left(\frac{\partial u}{\partial y} + \frac{\partial v}{\partial x}\right) + \frac{\epsilon(\lambda + 2\mu)}{y}\left(\frac{\partial v}{\partial y} - \frac{v}{y}\right)
+\label{eq:visc_y}
+\end{equation}
+
+where $c_\mu = c_\lambda$ are nondimensional quantities that specify the distribution and amount of smoothing. \textbf{[Note: Complete artificial viscosity formulation to be filled from Section II of original report.]}
+
+\section{Numerical Method}
+
+The computational plane is divided into five sets of mesh points: interior, inlet, exit, wall and centerbody, and exhaust jet boundary.
+
+\subsection{Interior Mesh Points}
+
+The interior mesh points are computed using the MacCormack scheme, a second-order, non-centered, two-step, finite-difference scheme. Backward differences are used on the first step; forward differences are used on the second. The governing equations are left in non-conservation form. An explicit artificial viscosity term is used for shock computations. Centerline mesh points are computed by enforcing symmetry of the flow. For example, the finite-difference equations for Equation~\eqref{eq:continuity} for planar flow ($\epsilon = 0$) and no artificial viscosity are:
+
+\begin{equation}
+\bar{\rho}^{N+1}_{L,M} = \rho^{N}_{L,M} - \left[u^{N}_{L,M}\left(\frac{\rho^{N}_{L,M} - \rho^{N}_{L-1,M}}{\Delta x}\right) + v^{N}_{L,M}\left(\frac{\rho^{N}_{L,M} - \rho^{N}_{L,M-1}}{\Delta y}\right) + \rho^{N}_{L,M}\left(\frac{u^{N}_{L,M} - u^{N}_{L-1,M}}{\Delta x}\right) + \rho^{N}_{L,M}\left(\frac{v^{N}_{L,M} - v^{N}_{L,M-1}}{\Delta y}\right)\right]\Delta t
+\label{eq:maccormack_1}
+\end{equation}
+
+\begin{equation}
+\rho^{N+1}_{L,M} = 0.5\left[\rho^{N}_{L,M} +\bar{\rho}^{N+1}_{L,M} - \left[\bar{u}^{N+1}_{L,M}\left(\frac{\bar{\rho}^{N+1}_{L+1,M} - \bar{\rho}^{N+1}_{L,M}}{\Delta x}\right) + \bar{v}^{N+1}_{L,M}\left(\frac{\bar{\rho}^{N+1}_{L,M+1} - \bar{\rho}^{N+1}_{L,M}}{\Delta y}\right) + \bar{\rho}^{N+1}_{L,M}\left(\frac{\bar{u}^{N+1}_{L+1,M} - \bar{u}^{N+1}_{L,M}}{\Delta x}\right) + \bar{\rho}^{N+1}_{L,M}\left(\frac{\bar{v}^{N+1}_{L,M+1} - \bar{v}^{N+1}_{L,M}}{\Delta y}\right)\right]\Delta t\right]
+\label{eq:maccormack_2}
+\end{equation}
+
+where $L$ and $M$ denote axial and radial mesh points, respectively, $N$ denotes the time step, and the bar denotes values calculated on the first step.
+
+\subsection{Inlet Mesh Points}
+
+The inlet mesh points for subsonic flow are computed using a second-order, reference-plane characteristic scheme. In this scheme, the partial derivatives with respect to $\eta$ are computed in the initial-value and solution surfaces using non-centered differencing as in the MacCormack scheme. These approximations to the derivatives with respect to $\eta$ are then treated as forcing terms and the resulting system of equations is solved in the $\eta = \text{constant}$ reference planes using a two-independent-variable, characteristic scheme.
+
+The boundary condition is the specification of the stagnation temperature and stagnation pressure. The use of a reference-plane characteristic scheme requires the specification of inlet flow angle as an additional boundary condition. The inlet flow angle can be approximately determined from the nozzle geometry. The equations relating the total and static conditions are:
+
+\begin{align}
+p_T/p &= \left[1+(\gamma-1)M^2/2\right]^{\gamma/(\gamma-1)} \label{eq:temp_ratio}\\
+T_T/T &= 1+(\gamma-1)M^2/2 \label{eq:press_ratio}
+\end{align}
+
+where $\gamma$ is the ratio of specific heats, $M$ is the Mach number, $T$ is the temperature, and the subscript $T$ denotes the total conditions.
+
+For supersonic flow, the inlet mesh points are set equal to specified values of velocity, pressure, and density.
+
+\subsection{Exit Mesh Points}
+
+For subsonic flow, a reference-plane characteristic scheme similar to the inlet scheme is used. The exit pressure is specified.
+
+For supersonic flow, the exit mesh points are computed using linear extrapolation.
+
+\subsection{Wall and Centerbody Mesh Points}
+
+The wall and centerbody mesh points are computed using a reference-plane characteristic scheme. The wall and centerbody contours and therefore their slopes are specified. The boundary condition is given by:
+
+\begin{equation}
+v = u \tan(\theta) + \frac{\partial y_w}{\partial t}
+\label{eq:wall_bc}
+\end{equation}
+
+where $\theta$ is the local wall or centerbody angle.
+
+\subsection{Exhaust Jet Boundary Mesh Points}
+
+The exhaust jet boundary mesh points are computed by the wall routine such that the pressure boundary condition:
+
+\begin{equation}
+p = p_{\text{ambient}}
+\label{eq:jet_bc}
+\end{equation}
+
+is satisfied. This is accomplished by first assuming the shape of the jet boundary and then using the wall routine to calculate the pressure. Next, the jet boundary location is slightly changed and a second pressure is computed. By use of an interpolation procedure, a new jet boundary location is determined. This interpolation-extrapolation procedure is then repeated at each point until the jet boundary pressure and the ambient pressure agree within some specified tolerance.
+
+\subsection{Time Step Control}
+
+The step size $\Delta t$ is controlled by the well-known Courant or CFL condition, which can be expressed as:
+
+\begin{equation}
+\Delta t \leq \frac{1}{\left[(V+a) \left(\frac{1}{\Delta x^2} + \frac{1}{\Delta y^2}\right)^{1/2}\right]}
+\label{eq:cfl}
+\end{equation}
+
+where $V$ is the velocity magnitude. Using the coordinate transformation, Equation~\eqref{eq:cfl} becomes:
+
+\begin{equation}
+\Delta \tau \leq \frac{A}{\left[(V+a) \left(\frac{1}{\Delta \zeta^2} + \frac{\beta^2}{\Delta \eta^2}\right)^{1/2}\right]}
+\label{eq:cfl_transformed}
+\end{equation}
+
+where the coefficient $A$ was determined from actual calculations and varied between 0.4 and 1.6 depending on the geometry of the flow in question.
+
+\section{Overall Program Capabilities}
+
+The nozzle inlet flow, as well as the flow leaving the nozzle, may be either subsonic or supersonic. The flow may contain variations in stagnation temperature and stagnation pressure from streamline to streamline. The nozzle wall and centerbody geometries may be either one of two analytical contours or a completely general tabular contour. The program is capable of calculating the exhaust jet boundary for subsonic or supersonic flow. The initial data may be read in or calculated internally by the program. The internally computed data are calculated assuming one-dimensional, steady, isentropic flow with area change. The program output includes the coordinates, velocities, pressure, density, Mach number, temperature, mass flow, and axial thrust in both English and metric units.
+
+\section{Results and Discussion}
+
+The results presented here have been adopted from experimental validation work. The CDC 6600 computational times represent the central processor time not including compilation. So that these results can be compared with those of other investigators, the following table of relative machine speeds is provided:
+
+\input{tex/tables/machine_speeds_relative_to_cdc6600.tex}
+
+The validation cases are presented below.
+
+\subsection{Case 1: 45°-15° Conical Converging-Diverging Nozzle}
+
+\begin{figure}[H]
+  \centering
+  \fbox{\includegraphics[width=0.8\textwidth]{figures/fig1a_nozzle_geometry_CD}}
+  \caption{45°-15° Converging-Diverging Nozzle Geometry}
+  \label{fig:nozzle_cd}
+\end{figure}
+
+The present method was used to compute the steady-state solution for flow in the 45°-15° conical, converging-diverging nozzle. A $21 \times 8$ computational mesh required 301 time planes and a computational time of 35 seconds. The experimental data are those of Cuffel et al. (Ref. 2). The computed discharge coefficient is 0.983, compared with the experimental value of 0.985.
+
+\begin{figure}[H]
+  \centering
+  \fbox{\includegraphics[width=0.8\textwidth]{figures/fig2_mach_contours_CD}}
+  \caption{Mach Number Contours and Wall Pressure Ratio for 45°-15° Conical Converging-Diverging Nozzle}
+  \label{fig:mach_cd}
+\end{figure}
+
+There is good agreement with the experimental data. This case was also solved by other researchers including Prozan, Migdal, Laval, and Serra, with computational times ranging from 45 minutes to 2 hours on various computer systems.
+
+\subsection{Case 2: 15° Conical Converging Nozzle}
+
+\begin{figure}[H]
+  \centering
+  \fbox{\includegraphics[width=0.8\textwidth]{figures/fig1b_nozzle_geometry_C}}
+  \caption{15° Conical Converging Nozzle Geometry}
+  \label{fig:nozzle_c}
+\end{figure}
+
+The present method was also used to compute the steady-state flow in a 15° conical, converging nozzle. The nozzle geometry is shown in Figure~\ref{fig:nozzle_c}. A $23 \times 7$ computational mesh required 249 time planes and a computational time of 29 seconds. The experimental data are those of Thornock (Ref. 17). The computed discharge coefficient is 0.957, compared with the experimental value of 0.960.
+
+\begin{figure}[H]
+  \centering
+  \fbox{\includegraphics[width=0.8\textwidth]{figures/fig3_mach_contours_C}}
+  \caption{Mach Number Contours and Wall Pressure Ratio for 15° Conical Converging Nozzle}
+  \label{fig:mach_c}
+\end{figure}
+
+There is good agreement with the experimental data. This case was also solved by Wehofer and Moger and Brown and Ozcan, with Wehofer and Moger requiring over 2 hours on an IBM 360/50 (47×11 mesh) and Brown and Ozcan requiring 17 minutes on an IBM 360/65 (20×6 mesh).
+
+\subsection{Case 3: 10° Conical Plug Nozzle}
+
+\begin{figure}[H]
+  \centering
+  \fbox{\includegraphics[width=0.8\textwidth]{figures/fig1c_nozzle_geometry_P}}
+  \caption{10° Conical Plug Nozzle Geometry}
+  \label{fig:nozzle_p}
+\end{figure}
+
+Finally, the present method was used to calculate the flow in a 10° conical, plug nozzle. The nozzle geometry is shown in Figure~\ref{fig:nozzle_p}. A $31 \times 6$ computational mesh required 327 time planes and a computational time of 52 seconds. The experimental data are those of Bresnahan and Johns (Ref. 18).
+
+\begin{figure}[H]
+  \centering
+  \fbox{\includegraphics[width=0.8\textwidth]{figures/fig4_mach_contours_P}}
+  \caption{Mach Number Contours and Plug Pressure Ratio for 10° Conical Plug Nozzle}
+  \label{fig:mach_p}
+\end{figure}
+
+Again, there is good agreement with the experimental data. The author is unaware of any other time-dependent analyses of plug nozzles.
+
+\section{Concluding Remarks}
+
+A method of computing nozzle flows has been presented. A production-type computer program capable of solving a wide variety of nozzle flows has been developed. The program's accuracy was demonstrated by computing the steady flow in the three test cases above. The sub-one-minute computational times for these steady flows is considerably faster than for any of the earlier time-dependent techniques.
