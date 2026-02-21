@@ -20,5 +20,9 @@
 - `XT_tol = 0.005`
 - `baseline_mach_mae = 0.07736578378450953`
 - `baseline_p_mae_psia = 1.8779507955979222`
-- `baseline_wall_p_ratio_mae = 0.030674061764350037`
+- `baseline_wall_p_ratio_mae = 0.030674061764350037` (`P/Pt` convention)
 - `regression_margin_frac = 0.20`
+
+### Pressure-Ratio Convention Status
+- Canonical/gated convention: `P/Pt`
+- Diagnostic-only alternate convention: `P/P_wall,inlet`

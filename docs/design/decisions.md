@@ -13,3 +13,9 @@ Record significant architecture and numerical choices here with date and rationa
   - establish plots/verification first
   - then improve numerical methods incrementally
   - keep each change as a small baby step
+- Keep wall pressure-ratio regression gating on `P/Pt` for baseline continuity; track `P/P_wall,inlet` as diagnostic-only while reference convention alignment remains open.
+- Reference-method diagnostic check (2026-02-21) did not justify switching canonical convention:
+  - `P/Pt_MAE = 0.030674061764350037`
+  - `P/P_wall,inlet_MAE = 0.030011552085192968`
+  - relative improvement = `2.16%`, below `5%` switch threshold
+  - continue with canonical `P/Pt`; keep `P/P_wall,inlet` diagnostic-only.

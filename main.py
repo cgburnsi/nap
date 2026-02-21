@@ -34,6 +34,9 @@ class RunConfig:
         baseline_mach_mae=0.07736578378450953,
         baseline_p_mae_psia=1.8779507955979222,
         baseline_wall_p_ratio_mae=0.030674061764350037,
+        residual_trend_min_points=10,
+        residual_end_over_start_max=0.50,
+        residual_nonincreasing_frac_min=0.70,
     ):
         self.case_name = case_name
         self.lmax = lmax
@@ -62,6 +65,9 @@ class RunConfig:
         self.baseline_mach_mae = baseline_mach_mae
         self.baseline_p_mae_psia = baseline_p_mae_psia
         self.baseline_wall_p_ratio_mae = baseline_wall_p_ratio_mae
+        self.residual_trend_min_points = residual_trend_min_points
+        self.residual_end_over_start_max = residual_end_over_start_max
+        self.residual_nonincreasing_frac_min = residual_nonincreasing_frac_min
 
 
 class Grid:
@@ -352,6 +358,70 @@ class Verifier:
         if state is None:
             raise RuntimeError("RunResult metadata does not include state for verification.")
 
+        residuals = np.asarray(result.residual_history, dtype=float)
+        if residuals.size == 0:
+            raise RuntimeError("Residual sanity check failed: residual history is empty.")
+        if not np.all(np.isfinite(residuals)):
+            bad_idx = int(np.where(~np.isfinite(residuals))[0][0])
+            raise RuntimeError(
+                "Residual sanity check failed: residual history contains non-finite values. "
+                f"First bad index={bad_idx}, value={residuals[bad_idx]}"
+            )
+        if np.any(residuals < 0.0):
+            bad_idx = int(np.where(residuals < 0.0)[0][0])
+            raise RuntimeError(
+                "Residual sanity check failed: residual history contains negative values. "
+                f"First bad index={bad_idx}, value={residuals[bad_idx]}"
+            )
+        residual_shape_check = {
+            "status": "not_applicable_yet",
+            "n_points": int(residuals.size),
+            "start": float(residuals[0]),
+            "end": float(residuals[-1]),
+            "end_over_start": float("nan"),
+            "nonincreasing_frac": float("nan"),
+            "min_points_required": int(config.residual_trend_min_points),
+            "end_over_start_max": float(config.residual_end_over_start_max),
+            "nonincreasing_frac_min": float(config.residual_nonincreasing_frac_min),
+            "passed": True,
+        }
+        if 1 < residuals.size < int(config.residual_trend_min_points):
+            residual_shape_check["status"] = "insufficient_points"
+        elif residuals.size >= int(config.residual_trend_min_points):
+            diffs = np.diff(residuals)
+            nonincreasing_frac = float(np.mean(diffs <= 0.0))
+            end_over_start = (
+                float(residuals[-1] / residuals[0]) if abs(float(residuals[0])) > 1.0e-12 else float("inf")
+            )
+            # Convergence-shape criteria for marching runs.
+            passed_end_ratio = bool(end_over_start <= float(config.residual_end_over_start_max))
+            passed_nonincreasing = bool(
+                nonincreasing_frac >= float(config.residual_nonincreasing_frac_min)
+            )
+            passed = bool(passed_end_ratio and passed_nonincreasing)
+            residual_shape_check = {
+                "status": "evaluated",
+                "n_points": int(residuals.size),
+                "start": float(residuals[0]),
+                "end": float(residuals[-1]),
+                "end_over_start": end_over_start,
+                "nonincreasing_frac": nonincreasing_frac,
+                "min_points_required": int(config.residual_trend_min_points),
+                "end_over_start_max": float(config.residual_end_over_start_max),
+                "nonincreasing_frac_min": float(config.residual_nonincreasing_frac_min),
+                "passed_end_ratio": passed_end_ratio,
+                "passed_nonincreasing": passed_nonincreasing,
+                "passed": passed,
+            }
+            if not passed:
+                raise RuntimeError(
+                    "Residual shape check failed: "
+                    f"end_over_start={end_over_start:.6g} "
+                    f"(max={config.residual_end_over_start_max:.6g}), "
+                    f"nonincreasing_frac={nonincreasing_frac:.6g} "
+                    f"(min={config.residual_nonincreasing_frac_min:.6g})."
+                )
+
         data = np.genfromtxt(config.baseline_csv_path, delimiter=",", names=True)
         rows = np.atleast_1d(data)
         if rows.size == 0:
@@ -434,11 +504,30 @@ class Verifier:
         wall_mask = wall_ref_mask & np.isfinite(p_ref_psia)
         p_ratio_mae = float("nan")
         p_ratio_mape = float("nan")
+        p_ratio_inlet_mae = float("nan")
+        p_ratio_inlet_mape = float("nan")
         if np.any(wall_mask) and np.isfinite(pt_psia) and pt_psia > 0.0:
             p_ratio_model = p_model_psia / pt_psia
             p_ratio_ref = p_ref_psia / pt_psia
             p_ratio_mae = _mae(p_ratio_model, p_ratio_ref, wall_mask)
             p_ratio_mape = _mape(p_ratio_model, p_ratio_ref, wall_mask)
+
+        # Diagnostic-only alternate convention:
+        # normalize wall static pressure by inlet wall static pressure.
+        j_wall = int(m_wall_ref) - 1
+        if 0 <= j_wall < grid.mmax:
+            wall_ref_line = p_ref_psia[:, j_wall]
+            wall_model_line = p_model_psia[:, j_wall]
+            valid_line = np.isfinite(wall_ref_line) & np.isfinite(wall_model_line)
+            if np.any(valid_line):
+                l_inlet = int(np.where(valid_line)[0][0])
+                p_ref_inlet = float(wall_ref_line[l_inlet])
+                p_model_inlet = float(wall_model_line[l_inlet])
+                if abs(p_ref_inlet) > 1.0e-12 and abs(p_model_inlet) > 1.0e-12:
+                    p_ratio_inlet_ref = p_ref_psia / p_ref_inlet
+                    p_ratio_inlet_model = p_model_psia / p_model_inlet
+                    p_ratio_inlet_mae = _mae(p_ratio_inlet_model, p_ratio_inlet_ref, wall_mask)
+                    p_ratio_inlet_mape = _mape(p_ratio_inlet_model, p_ratio_inlet_ref, wall_mask)
 
         metrics = {
             "count": int(np.sum(ref_mask)),
@@ -452,7 +541,29 @@ class Verifier:
             "mach_mape_pct": _mape(mach_model, mach_ref, ref_mask),
             "wall_p_ratio_mae": p_ratio_mae,
             "wall_p_ratio_mape_pct": p_ratio_mape,
+            "wall_p_ratio_inlet_norm_mae": p_ratio_inlet_mae,
+            "wall_p_ratio_inlet_norm_mape_pct": p_ratio_inlet_mape,
         }
+
+        # Reference-method check for wall pressure ratio convention.
+        # Use a conservative threshold so we only recommend switching when
+        # there is a clear improvement against the current baseline reference.
+        method_check = {
+            "canonical": "P/Pt",
+            "alternate": "P/P_wall,inlet",
+            "canonical_mae": float(metrics["wall_p_ratio_mae"]),
+            "alternate_mae": float(metrics["wall_p_ratio_inlet_norm_mae"]),
+            "improvement_frac": float("nan"),
+            "recommended": "keep_canonical",
+        }
+        can_mae = method_check["canonical_mae"]
+        alt_mae = method_check["alternate_mae"]
+        if np.isfinite(can_mae) and np.isfinite(alt_mae) and can_mae > 0.0:
+            improvement = (can_mae - alt_mae) / can_mae
+            method_check["improvement_frac"] = float(improvement)
+            # 5% threshold to avoid churn from noise-level differences.
+            if improvement >= 0.05:
+                method_check["recommended"] = "switch_to_alternate"
 
         for key, value in metrics.items():
             if key == "count":
@@ -508,6 +619,14 @@ class Verifier:
             "mach_mape_pct": metrics["mach_mape_pct"],
             "wall_p_ratio_mae": metrics["wall_p_ratio_mae"],
             "wall_p_ratio_mape_pct": metrics["wall_p_ratio_mape_pct"],
+            "wall_p_ratio_inlet_norm_mae": metrics["wall_p_ratio_inlet_norm_mae"],
+            "wall_p_ratio_inlet_norm_mape_pct": metrics["wall_p_ratio_inlet_norm_mape_pct"],
+            "wall_ratio_method_check": method_check,
+            "residual_points": int(residuals.size),
+            "residual_start": float(residuals[0]),
+            "residual_end": float(residuals[-1]),
+            "residual_min": float(np.min(residuals)),
+            "residual_shape_check": residual_shape_check,
             "regression_margin_frac": margin,
             "regression_gates": gates,
         }
@@ -774,16 +893,35 @@ class Plots:
         p_ref_psia = np.array([float(r["P"]) for r in wall_rows], dtype=float)
         pt_psia = float(np.mean(state.pt)) if np.any(state.pt > 0.0) else 1.0
         p_ratio_ref = p_ref_psia / max(pt_psia, 1.0e-12)
+        p_model_psia_wall = state.p[:, j_wall, 0] / 144.0
+        p_ratio_model_inlet = p_model_psia_wall / max(float(p_model_psia_wall[0]), 1.0e-12)
+        p_ratio_ref_inlet = p_ref_psia / max(float(p_ref_psia[0]), 1.0e-12)
 
-        fig, ax = plt.subplots(figsize=(8.6, 4.8), dpi=150)
-        ax.plot(x_model, p_ratio_model, color="k", lw=2.0, label="Model wall P/Pt")
-        ax.scatter(x_ref, p_ratio_ref, s=20, facecolors="none", edgecolors="k", label="CSV wall data")
-        ax.set_title("Wall Pressure Ratio vs Axial Distance")
-        ax.set_xlabel("Axial Distance")
-        ax.set_ylabel("Wall Pressure Ratio")
-        ax.set_ylim(bottom=0.0)
-        ax.grid(alpha=0.15)
-        ax.legend(loc="best")
+        p_ratio_ref_on_model = np.interp(x_model, x_ref, p_ratio_ref)
+        p_ratio_ref_inlet_on_model = np.interp(x_model, x_ref, p_ratio_ref_inlet)
+        mae_pt = float(np.mean(np.abs(p_ratio_model - p_ratio_ref_on_model)))
+        mae_inlet = float(np.mean(np.abs(p_ratio_model_inlet - p_ratio_ref_inlet_on_model)))
+
+        fig, axes = plt.subplots(1, 2, figsize=(12.0, 4.8), dpi=150, sharex=True)
+        ax0, ax1 = axes
+
+        ax0.plot(x_model, p_ratio_model, color="k", lw=2.0, label="Model")
+        ax0.scatter(x_ref, p_ratio_ref, s=20, facecolors="none", edgecolors="k", label="CSV")
+        ax0.set_title(f"P/Pt (MAE={mae_pt:.4f})")
+        ax0.set_xlabel("Axial Distance")
+        ax0.set_ylabel("Wall Pressure Ratio")
+        ax0.set_ylim(bottom=0.0)
+        ax0.grid(alpha=0.15)
+        ax0.legend(loc="best")
+
+        ax1.plot(x_model, p_ratio_model_inlet, color="k", lw=2.0, label="Model")
+        ax1.scatter(x_ref, p_ratio_ref_inlet, s=20, facecolors="none", edgecolors="k", label="CSV")
+        ax1.set_title(f"P/P_wall,inlet (MAE={mae_inlet:.4f})")
+        ax1.set_xlabel("Axial Distance")
+        ax1.set_ylabel("Wall Pressure Ratio")
+        ax1.set_ylim(bottom=0.0)
+        ax1.grid(alpha=0.15)
+        ax1.legend(loc="best")
         fig.tight_layout()
         fig.savefig(output_path, bbox_inches="tight")
         plt.show()
@@ -851,7 +989,36 @@ if __name__ == "__main__":
     print(
         "verify wall ratio: "
         f"P/Pt_MAE={verify_report['wall_p_ratio_mae']}, "
-        f"P/Pt_MAPE%={verify_report['wall_p_ratio_mape_pct']}"
+        f"P/Pt_MAPE%={verify_report['wall_p_ratio_mape_pct']}, "
+        f"P/Pwall,inlet_MAE={verify_report['wall_p_ratio_inlet_norm_mae']}, "
+        f"P/Pwall,inlet_MAPE%={verify_report['wall_p_ratio_inlet_norm_mape_pct']}"
+    )
+    method_check = verify_report["wall_ratio_method_check"]
+    print(
+        "wall ratio method check: "
+        f"canonical={method_check['canonical']}, "
+        f"alternate={method_check['alternate']}, "
+        f"improvement_frac={method_check['improvement_frac']}, "
+        f"recommendation={method_check['recommended']}"
+    )
+    print(
+        "residual sanity: "
+        f"points={verify_report['residual_points']}, "
+        f"start={verify_report['residual_start']}, "
+        f"end={verify_report['residual_end']}, "
+        f"min={verify_report['residual_min']}"
+    )
+    residual_shape = verify_report["residual_shape_check"]
+    print(
+        "residual shape: "
+        f"status={residual_shape['status']}, "
+        f"n_points={residual_shape['n_points']}, "
+        f"end_over_start={residual_shape['end_over_start']}, "
+        f"nonincreasing_frac={residual_shape['nonincreasing_frac']}, "
+        f"min_points_required={residual_shape['min_points_required']}, "
+        f"end_over_start_max={residual_shape['end_over_start_max']}, "
+        f"nonincreasing_frac_min={residual_shape['nonincreasing_frac_min']}, "
+        f"pass={residual_shape['passed']}"
     )
     gates = verify_report["regression_gates"]
     print("regression gates:")
