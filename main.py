@@ -371,6 +371,13 @@ class Verifier:
         state = result.metadata.get("state")
         if state is None:
             raise RuntimeError("RunResult metadata does not include state for verification.")
+        residual_source = result.metadata.get("residual_source")
+        valid_residual_sources = {"synthetic", "solver"}
+        if residual_source not in valid_residual_sources:
+            raise RuntimeError(
+                "Residual source check failed: expected one of "
+                f"{sorted(valid_residual_sources)}, got {residual_source!r}"
+            )
 
         residuals = np.asarray(result.residual_history, dtype=float)
         if residuals.size == 0:
@@ -641,6 +648,7 @@ class Verifier:
             "residual_end": float(residuals[-1]),
             "residual_min": float(np.min(residuals)),
             "residual_shape_check": residual_shape_check,
+            "residual_source": residual_source,
             "regression_margin_frac": margin,
             "regression_gates": gates,
         }
@@ -1022,7 +1030,7 @@ if __name__ == "__main__":
         f"end={verify_report['residual_end']}, "
         f"min={verify_report['residual_min']}"
     )
-    print(f"residual source: {result.metadata.get('residual_source', 'unknown')}")
+    print(f"residual source: {verify_report['residual_source']}")
     residual_shape = verify_report["residual_shape_check"]
     print(
         "residual shape: "
