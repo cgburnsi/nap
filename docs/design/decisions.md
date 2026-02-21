@@ -19,3 +19,7 @@ Record significant architecture and numerical choices here with date and rationa
   - `P/P_wall,inlet_MAE = 0.030011552085192968`
   - relative improvement = `2.16%`, below `5%` switch threshold
   - continue with canonical `P/Pt`; keep `P/P_wall,inlet` diagnostic-only.
+- Add synthetic residual-history harness for verification plumbing:
+  - config: `use_synthetic_residual_history`, `synthetic_residual_points`
+  - purpose: exercise residual-shape gates before transient marching exists
+  - exit condition: disable/remove synthetic history once real marching residuals are available.

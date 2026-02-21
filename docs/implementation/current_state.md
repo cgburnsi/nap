@@ -1,7 +1,7 @@
 # Current State Snapshot (2026-02-21)
 
 ## Branch / Repo State
-- Active branch: `feat/regression-rate-limits`
+- Active branch: `feat/residual-shape-harness`
 - Main branch contains merged work through commit: `0343089`
 - This branch includes additional local updates not yet merged.
 
@@ -26,6 +26,9 @@
   - `residual_trend_min_points = 10`
   - `residual_end_over_start_max = 0.50`
   - `residual_nonincreasing_frac_min = 0.70`
+- Synthetic residual harness (verification plumbing) is currently enabled by default:
+  - `use_synthetic_residual_history = True`
+  - `synthetic_residual_points = 10`
 - Hard CSV domain validity check.
 - Hard finite-metric check.
 - Hard no-regression metric gates for:
@@ -35,7 +38,7 @@
 
 ## Known Gaps
 - No transient marching implementation yet.
-- Residual history is still placeholder-level (shape criteria configured, but currently not active with one-point history).
+- Residual history is currently synthetic placeholder data on this branch to exercise residual-shape gates.
 - Pressure ratio convention alignment to legacy/reference plotting method may still need refinement if new reference evidence appears.
 - Current runtime tracks two wall pressure-ratio diagnostics:
   - canonical/gated: `P/Pt`
@@ -48,11 +51,11 @@
 
 ## Next Recommended Baby Steps
 1. Keep `P/Pt` as canonical unless stronger reference-method evidence suggests a change.
-2. Add residual/convergence gates after transient marching exists.
+2. Replace synthetic residual harness with real marching residual history and keep the same convergence-shape criteria.
 3. Decide when to convert relative no-regression gates into absolute target gates.
 
 ## Resume Checklist
-1. `git checkout feat/regression-rate-limits`
+1. `git checkout feat/residual-shape-harness`
 2. `python3 main.py`
 3. Inspect `artifacts/verification/*.png`
 4. Confirm verification summary and gate lines in console output
