@@ -321,20 +321,24 @@ class Solver:
         state.u[:, :, 1] = state.u[:, :, 0]
         state.v[:, :, 1] = state.v[:, :, 0]
 
+        iterations = 0
         residual_history = [1.0]
-        if bool(self.config.use_synthetic_residual_history):
+        residual_source = "solver"
+        if bool(self.config.use_synthetic_residual_history) and iterations == 0:
             nres = max(2, int(self.config.synthetic_residual_points))
             # Deterministic placeholder sequence to exercise residual-shape gates.
             residual_history = np.geomspace(1.0, 0.25, nres).tolist()
+            residual_source = "synthetic"
 
         return RunResult(
             converged=False,
-            iterations=0,
+            iterations=iterations,
             residual_history=residual_history,
             metadata={
                 "case_name": self.config.case_name,
                 "state": state,
                 "gamma": gamma,
+                "residual_source": residual_source,
                 "mach_inlet": float(mach_l[0]),
                 "mach_throat": float(mach_l[grid.lt]),
                 "mach_exit": float(mach_l[-1]),
@@ -1018,6 +1022,7 @@ if __name__ == "__main__":
         f"end={verify_report['residual_end']}, "
         f"min={verify_report['residual_min']}"
     )
+    print(f"residual source: {result.metadata.get('residual_source', 'unknown')}")
     residual_shape = verify_report["residual_shape_check"]
     print(
         "residual shape: "
