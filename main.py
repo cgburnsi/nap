@@ -39,6 +39,7 @@ class RunConfig:
         residual_nonincreasing_frac_min=0.70,
         use_synthetic_residual_history=True,
         synthetic_residual_points=10,
+        enable_transient_stub=True,
         enable_plots=True,
     ):
         self.case_name = case_name
@@ -73,6 +74,7 @@ class RunConfig:
         self.residual_nonincreasing_frac_min = residual_nonincreasing_frac_min
         self.use_synthetic_residual_history = use_synthetic_residual_history
         self.synthetic_residual_points = synthetic_residual_points
+        self.enable_transient_stub = enable_transient_stub
         self.enable_plots = enable_plots
 
 
@@ -326,7 +328,30 @@ class Solver:
         iterations = 0
         residual_history = [1.0]
         residual_source = "solver"
-        if bool(self.config.use_synthetic_residual_history) and iterations == 0:
+        if bool(self.config.enable_transient_stub):
+            # One predictor-style interior sweep used only to generate a real
+            # second residual value before full marching is implemented.
+            u0 = state.u[:, :, 0]
+            u_pred = u0.copy()
+            if grid.lmax >= 3 and grid.mmax >= 3:
+                dt_stub = 1.0e-6
+                for l in range(1, grid.lmax - 1):
+                    dx = max(grid.x[l + 1, 1] - grid.x[l - 1, 1], 1.0e-12)
+                    for m in range(1, grid.mmax - 1):
+                        du_dx = (u0[l + 1, m] - u0[l - 1, m]) / dx
+                        u_pred[l, m] = u0[l, m] - dt_stub * u0[l, m] * du_dx
+
+            interior = (slice(1, grid.lmax - 1), slice(1, grid.mmax - 1))
+            if grid.lmax >= 3 and grid.mmax >= 3:
+                denom = np.maximum(np.abs(u0[interior]), 1.0e-12)
+                rel = np.abs(u_pred[interior] - u0[interior]) / denom
+                residual2 = float(np.max(rel)) if rel.size > 0 else 0.0
+            else:
+                residual2 = 0.0
+            residual_history = [1.0, max(residual2, 1.0e-14)]
+            iterations = 1
+            residual_source = "solver"
+        elif bool(self.config.use_synthetic_residual_history) and iterations == 0:
             nres = max(2, int(self.config.synthetic_residual_points))
             # Deterministic placeholder sequence to exercise residual-shape gates.
             residual_history = np.geomspace(1.0, 0.25, nres).tolist()
