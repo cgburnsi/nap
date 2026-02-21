@@ -39,6 +39,7 @@ class RunConfig:
         residual_nonincreasing_frac_min=0.70,
         use_synthetic_residual_history=True,
         synthetic_residual_points=10,
+        enable_plots=True,
     ):
         self.case_name = case_name
         self.lmax = lmax
@@ -72,6 +73,7 @@ class RunConfig:
         self.residual_nonincreasing_frac_min = residual_nonincreasing_frac_min
         self.use_synthetic_residual_history = use_synthetic_residual_history
         self.synthetic_residual_points = synthetic_residual_points
+        self.enable_plots = enable_plots
 
 
 class Grid:
@@ -987,12 +989,15 @@ if __name__ == "__main__":
     verify_report = verifier.verify(config, grid, result)
 
     # 6) Run Plots.
-    plots = Plots(config, grid, result, verify_report)
-    plots.plot_grid()
-    plots.plot_solution()
-    plots.plot_residuals()
-    plots.plot_fig2_style()
-    plots.plot_wall_pressure_comparison()
+    if config.enable_plots:
+        plots = Plots(config, grid, result, verify_report)
+        plots.plot_grid()
+        plots.plot_solution()
+        plots.plot_residuals()
+        plots.plot_fig2_style()
+        plots.plot_wall_pressure_comparison()
+    else:
+        print("plots: skipped (enable_plots=False)")
 
     # 7) Print concise run summary.
     print("NAP run summary")
