@@ -37,6 +37,8 @@ class RunConfig:
         residual_trend_min_points=10,
         residual_end_over_start_max=0.50,
         residual_nonincreasing_frac_min=0.70,
+        use_synthetic_residual_history=True,
+        synthetic_residual_points=10,
     ):
         self.case_name = case_name
         self.lmax = lmax
@@ -68,6 +70,8 @@ class RunConfig:
         self.residual_trend_min_points = residual_trend_min_points
         self.residual_end_over_start_max = residual_end_over_start_max
         self.residual_nonincreasing_frac_min = residual_nonincreasing_frac_min
+        self.use_synthetic_residual_history = use_synthetic_residual_history
+        self.synthetic_residual_points = synthetic_residual_points
 
 
 class Grid:
@@ -317,10 +321,16 @@ class Solver:
         state.u[:, :, 1] = state.u[:, :, 0]
         state.v[:, :, 1] = state.v[:, :, 0]
 
+        residual_history = [1.0]
+        if bool(self.config.use_synthetic_residual_history):
+            nres = max(2, int(self.config.synthetic_residual_points))
+            # Deterministic placeholder sequence to exercise residual-shape gates.
+            residual_history = np.geomspace(1.0, 0.25, nres).tolist()
+
         return RunResult(
             converged=False,
             iterations=0,
-            residual_history=[1.0],
+            residual_history=residual_history,
             metadata={
                 "case_name": self.config.case_name,
                 "state": state,
