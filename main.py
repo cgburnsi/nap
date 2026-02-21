@@ -24,6 +24,12 @@ class RunConfig:
         baseline_csv_path="docs/verification/baselines/cd_nozzle_converged_solution.csv",
         xt_expected=2.554,
         xt_tol=0.005,
+        gamma=1.4,
+        rgas=53.35,
+        pt_in_psia=70.0,
+        tt_in_f=80.0,
+        onedim_mode="subsonic_sonic_supersonic",
+        csv_domain_tol=1.0e-3,
     ):
         self.case_name = case_name
         self.lmax = lmax
@@ -42,6 +48,12 @@ class RunConfig:
         self.baseline_csv_path = baseline_csv_path
         self.xt_expected = xt_expected
         self.xt_tol = xt_tol
+        self.gamma = gamma
+        self.rgas = rgas
+        self.pt_in_psia = pt_in_psia
+        self.tt_in_f = tt_in_f
+        self.onedim_mode = onedim_mode
+        self.csv_domain_tol = csv_domain_tol
 
 
 class Grid:
@@ -187,15 +199,122 @@ class Solver:
     def __init__(self, config: RunConfig):
         self.config = config
 
+    def _area_ratio_from_mach(self, mach):
+        """Isentropic A/A* relation for a perfect gas."""
+        gamma = self.config.gamma
+        acoef = 2.0 / (gamma + 1.0)
+        bcoef = (gamma - 1.0) / (gamma + 1.0)
+        ccoef = (gamma + 1.0) / (2.0 * (gamma - 1.0))
+        abm = acoef + bcoef * mach * mach
+        return (abm**ccoef) / max(mach, 1.0e-12)
+
+    def _solve_mach_from_area_ratio(self, area_ratio, branch):
+        """
+        Branch-safe bisection solve for Mach from A/A*.
+        branch: 'subsonic' or 'supersonic'
+        """
+        area_target = max(float(area_ratio), 1.0 + 1.0e-10)
+
+        if branch == "subsonic":
+            lo = 1.0e-6
+            hi = 0.999
+        elif branch == "supersonic":
+            lo = 1.001
+            hi = 8.0
+        else:
+            raise RuntimeError(f"Unknown branch '{branch}'")
+
+        f_lo = self._area_ratio_from_mach(lo) - area_target
+        f_hi = self._area_ratio_from_mach(hi) - area_target
+        if f_lo * f_hi > 0.0:
+            raise RuntimeError(
+                f"Area-Mach bracket failure on {branch} branch: "
+                f"A/A*={area_target:.6f}, f(lo)={f_lo:.6e}, f(hi)={f_hi:.6e}"
+            )
+
+        for _ in range(80):
+            mid = 0.5 * (lo + hi)
+            f_mid = self._area_ratio_from_mach(mid) - area_target
+            if abs(f_mid) < 1.0e-10 or abs(hi - lo) < 1.0e-10:
+                return mid
+            if f_lo * f_mid <= 0.0:
+                hi = mid
+                f_hi = f_mid
+            else:
+                lo = mid
+                f_lo = f_mid
+        return 0.5 * (lo + hi)
+
+    def _enforce_onedim_branch(self, l, lt, mach):
+        """Enforce subsonic/sonic/supersonic branch by location for baseline mode."""
+        if self.config.onedim_mode != "subsonic_sonic_supersonic":
+            return mach
+
+        if l < lt:
+            return min(mach, 0.999)
+        if l == lt:
+            return 1.0
+        return max(mach, 1.001)
+
     def solve(self, grid, state):
         if not grid.built or not state.initialized:
             raise RuntimeError("Grid and state must be prepared before solve().")
-        # Placeholder: interior march + boundary routines + convergence check.
+
+        # ONEDIM-style initialization from geometry area ratio.
+        pt_psf = self.config.pt_in_psia * 144.0
+        tt_r = self.config.tt_in_f + 460.0
+        gamma = self.config.gamma
+        rgas = self.config.rgas
+        gam1 = gamma / (gamma - 1.0)
+        gam2 = (gamma - 1.0) / 2.0
+
+        state.pt[:] = self.config.pt_in_psia
+        state.tt[:] = self.config.tt_in_f
+        state.theta[:] = 0.0
+
+        rstar = max(grid.yw[grid.lt], 1.0e-12)
+        mach_l = np.zeros(grid.lmax)
+        for l in range(grid.lmax):
+            area_ratio = max((grid.yw[l] ** 2) / (rstar**2), 1.0 + 1.0e-10)
+            if l < grid.lt:
+                mach = self._solve_mach_from_area_ratio(area_ratio, branch="subsonic")
+            elif l == grid.lt:
+                mach = 1.0
+            else:
+                mach = self._solve_mach_from_area_ratio(area_ratio, branch="supersonic")
+            mach = self._enforce_onedim_branch(l, grid.lt, mach)
+            mach_l[l] = mach
+
+            dem = 1.0 + gam2 * mach * mach
+            p = pt_psf / (dem**gam1)
+            t = tt_r / dem
+            rho = p / (rgas * t)
+            a = np.sqrt(gamma * p / rho)
+            u = mach * a
+
+            state.p[l, :, 0] = p
+            state.rho[l, :, 0] = rho
+            state.u[l, :, 0] = u
+            state.v[l, :, 0] = 0.0
+
+        # Keep both levels in sync until predictor/corrector marching is added.
+        state.p[:, :, 1] = state.p[:, :, 0]
+        state.rho[:, :, 1] = state.rho[:, :, 0]
+        state.u[:, :, 1] = state.u[:, :, 0]
+        state.v[:, :, 1] = state.v[:, :, 0]
+
         return RunResult(
             converged=False,
             iterations=0,
-            residual_history=[],
-            metadata={"case_name": self.config.case_name},
+            residual_history=[1.0],
+            metadata={
+                "case_name": self.config.case_name,
+                "state": state,
+                "gamma": gamma,
+                "mach_inlet": float(mach_l[0]),
+                "mach_throat": float(mach_l[grid.lt]),
+                "mach_exit": float(mach_l[-1]),
+            },
         )
 
 
@@ -212,6 +331,127 @@ class Verifier:
                 f"XT check failed: XT={grid.xt:.6f}, expected={config.xt_expected:.6f}, tol={config.xt_tol:.6f}"
             )
 
+        mach_inlet = result.metadata.get("mach_inlet")
+        if config.onedim_mode == "subsonic_sonic_supersonic":
+            if mach_inlet is None:
+                raise RuntimeError("Missing inlet Mach in RunResult metadata.")
+            if float(mach_inlet) >= 1.0:
+                raise RuntimeError(
+                    f"Inlet Mach check failed for subsonic-sonic-supersonic mode: M_inlet={mach_inlet:.6f}"
+                )
+
+        state = result.metadata.get("state")
+        if state is None:
+            raise RuntimeError("RunResult metadata does not include state for verification.")
+
+        data = np.genfromtxt(config.baseline_csv_path, delimiter=",", names=True)
+        rows = np.atleast_1d(data)
+        if rows.size == 0:
+            raise RuntimeError(f"No rows found in baseline CSV: {config.baseline_csv_path}")
+
+        required_cols = ["L", "M", "U", "V", "P", "RHO", "Mach"]
+        for col in required_cols:
+            if col not in data.dtype.names:
+                raise RuntimeError(
+                    f"Baseline CSV missing required column '{col}'. "
+                    f"Found columns: {data.dtype.names}"
+                )
+        if "X" in data.dtype.names and "Y" in data.dtype.names:
+            x_csv = np.asarray(rows["X"], dtype=float)
+            y_csv = np.asarray(rows["Y"], dtype=float)
+            finite_xy = np.isfinite(x_csv) & np.isfinite(y_csv)
+            if np.any(finite_xy):
+                x_use = x_csv[finite_xy]
+                y_use = y_csv[finite_xy]
+                y_wall_csv = np.interp(x_use, grid.xw, grid.yw)
+                tol = float(config.csv_domain_tol)
+                outside = (y_use < -tol) | (y_use > y_wall_csv + tol)
+                if np.any(outside):
+                    n_bad = int(np.sum(outside))
+                    i0 = int(np.where(outside)[0][0])
+                    raise RuntimeError(
+                        "CSV domain check failed: "
+                        f"{n_bad} points are outside nozzle bounds (tol={tol}). "
+                        f"First bad point: x={x_use[i0]:.6f}, y={y_use[i0]:.6f}, "
+                        f"y_wall={y_wall_csv[i0]:.6f}"
+                    )
+
+        gamma = float(result.metadata.get("gamma", config.gamma))
+        u_model = state.u[:, :, 0]
+        v_model = state.v[:, :, 0]
+        p_model_psia = state.p[:, :, 0] / 144.0
+        rho_model = state.rho[:, :, 0]
+        a_model = np.sqrt(np.maximum(1.0e-12, gamma * state.p[:, :, 0] / rho_model))
+        mach_model = np.sqrt(u_model * u_model + v_model * v_model) / a_model
+
+        u_ref = np.full((grid.lmax, grid.mmax), np.nan)
+        v_ref = np.full((grid.lmax, grid.mmax), np.nan)
+        p_ref_psia = np.full((grid.lmax, grid.mmax), np.nan)
+        mach_ref = np.full((grid.lmax, grid.mmax), np.nan)
+        wall_ref_mask = np.zeros((grid.lmax, grid.mmax), dtype=bool)
+        m_wall_ref = int(np.nanmax(np.asarray(rows["M"], dtype=float)))
+
+        for row in rows:
+            l_idx = int(round(float(row["L"]))) - 1
+            m_idx = int(round(float(row["M"]))) - 1
+            if 0 <= l_idx < grid.lmax and 0 <= m_idx < grid.mmax:
+                u_ref[l_idx, m_idx] = float(row["U"])
+                v_ref[l_idx, m_idx] = float(row["V"])
+                p_ref_psia[l_idx, m_idx] = float(row["P"])
+                mach_ref[l_idx, m_idx] = float(row["Mach"])
+                if int(round(float(row["M"]))) == m_wall_ref:
+                    wall_ref_mask[l_idx, m_idx] = True
+
+        ref_mask = np.isfinite(mach_ref)
+        if not np.any(ref_mask):
+            raise RuntimeError("No valid reference points mapped from baseline CSV.")
+
+        def _mae(model_vals, ref_vals, mask):
+            vals = np.abs(model_vals[mask] - ref_vals[mask])
+            vals = vals[np.isfinite(vals)]
+            if vals.size == 0:
+                return float("nan")
+            return float(np.mean(vals))
+
+        def _mape(model_vals, ref_vals, mask, floor=1.0e-8):
+            mv = model_vals[mask]
+            rv = ref_vals[mask]
+            finite = np.isfinite(mv) & np.isfinite(rv)
+            if np.sum(finite) == 0:
+                return float("nan")
+            denom = np.maximum(np.abs(rv[finite]), floor)
+            return float(np.mean(np.abs((mv[finite] - rv[finite]) / denom)) * 100.0)
+
+        pt_psia = float(np.mean(state.pt)) if np.any(state.pt > 0.0) else float("nan")
+        wall_mask = wall_ref_mask & np.isfinite(p_ref_psia)
+        p_ratio_mae = float("nan")
+        p_ratio_mape = float("nan")
+        if np.any(wall_mask) and np.isfinite(pt_psia) and pt_psia > 0.0:
+            p_ratio_model = p_model_psia / pt_psia
+            p_ratio_ref = p_ref_psia / pt_psia
+            p_ratio_mae = _mae(p_ratio_model, p_ratio_ref, wall_mask)
+            p_ratio_mape = _mape(p_ratio_model, p_ratio_ref, wall_mask)
+
+        metrics = {
+            "count": int(np.sum(ref_mask)),
+            "u_mae_fps": _mae(u_model, u_ref, ref_mask),
+            "u_mape_pct": _mape(u_model, u_ref, ref_mask),
+            "v_mae_fps": _mae(v_model, v_ref, ref_mask),
+            "v_mape_pct": _mape(v_model, v_ref, ref_mask),
+            "p_mae_psia": _mae(p_model_psia, p_ref_psia, ref_mask),
+            "p_mape_pct": _mape(p_model_psia, p_ref_psia, ref_mask),
+            "mach_mae": _mae(mach_model, mach_ref, ref_mask),
+            "mach_mape_pct": _mape(mach_model, mach_ref, ref_mask),
+            "wall_p_ratio_mae": p_ratio_mae,
+            "wall_p_ratio_mape_pct": p_ratio_mape,
+        }
+
+        for key, value in metrics.items():
+            if key == "count":
+                continue
+            if not np.isfinite(value):
+                raise RuntimeError(f"Verification metric '{key}' is not finite.")
+
         lt_value = getattr(grid, "lt", None)
         return {
             "checked": True,
@@ -220,16 +460,23 @@ class Verifier:
             "xt_error": float(xt_err),
             "xt_tol": float(config.xt_tol),
             "lt_report": lt_value,
-            "count": 0,
-            "u_mae_fps": float("nan"),
-            "v_mae_fps": float("nan"),
-            "p_mae_psia": float("nan"),
-            "mach_mae": float("nan"),
+            "count": metrics["count"],
+            "u_mae_fps": metrics["u_mae_fps"],
+            "u_mape_pct": metrics["u_mape_pct"],
+            "v_mae_fps": metrics["v_mae_fps"],
+            "v_mape_pct": metrics["v_mape_pct"],
+            "p_mae_psia": metrics["p_mae_psia"],
+            "p_mape_pct": metrics["p_mape_pct"],
+            "mach_mae": metrics["mach_mae"],
+            "mach_mape_pct": metrics["mach_mape_pct"],
+            "wall_p_ratio_mae": metrics["wall_p_ratio_mae"],
+            "wall_p_ratio_mape_pct": metrics["wall_p_ratio_mape_pct"],
         }
 
 
 class Plots:
-    def __init__(self, grid, result: RunResult, verify_report: dict):
+    def __init__(self, config, grid, result: RunResult, verify_report: dict):
+        self.config = config
         self.grid = grid
         self.result = result
         self.verify_report = verify_report
@@ -267,12 +514,242 @@ class Plots:
         print(f"Saved grid plot: {output_path}")
 
     def plot_solution(self) -> None:
-        # Placeholder: solution/diagnostic plot.
-        return
+        import matplotlib.pyplot as plt
+
+        state = self.result.metadata.get("state")
+        if state is None:
+            raise RuntimeError("RunResult metadata does not include state for solution plotting.")
+
+        os.makedirs("artifacts/verification", exist_ok=True)
+        output_path = "artifacts/verification/cd_baseline_solution.png"
+        output_path_2d = "artifacts/verification/cd_baseline_onedim_2d.png"
+
+        p = state.p[:, :, 0] / 144.0  # psia
+        u = state.u[:, :, 0]
+        x = self.grid.x[:, 0]
+        j_center = 0
+        j_wall = self.grid.mmax - 1
+
+        fig, axes = plt.subplots(1, 2, figsize=(12, 4.8), dpi=140)
+        ax0, ax1 = axes
+
+        ax0.plot(x, p[:, j_center], lw=2.0, color="#1f77b4", label="centerline")
+        ax0.plot(x, p[:, j_wall], lw=2.0, color="#d62728", label="wall")
+        ax0.set_title("Static Pressure (Level 0)")
+        ax0.set_xlabel("x")
+        ax0.set_ylabel("Pressure (psia)")
+        ax0.grid(alpha=0.2)
+        ax0.legend(loc="best")
+
+        ax1.plot(x, u[:, j_center], lw=2.0, color="#2ca02c", label="centerline")
+        ax1.plot(x, u[:, j_wall], lw=2.0, color="#9467bd", label="wall")
+        ax1.set_title("Axial Velocity (Level 0)")
+        ax1.set_xlabel("x")
+        ax1.set_ylabel("u")
+        ax1.grid(alpha=0.2)
+        ax1.legend(loc="best")
+
+        fig.tight_layout()
+        fig.savefig(output_path, bbox_inches="tight")
+        plt.show()
+        plt.close(fig)
+        print(f"Saved solution plot: {output_path}")
+
+        # 2D ONEDIM view with grid overlay (Mach field at level 0).
+        mach = np.sqrt(state.u[:, :, 0] ** 2 + state.v[:, :, 0] ** 2) / np.sqrt(
+            np.maximum(1.0e-12, self.result.metadata.get("gamma", 1.4) * state.p[:, :, 0] / state.rho[:, :, 0])
+        )
+
+        fig2, ax2 = plt.subplots(figsize=(10, 4.8), dpi=140)
+        cf = ax2.contourf(self.grid.x, self.grid.y, mach, levels=20, cmap="viridis")
+        for l in range(self.grid.lmax):
+            ax2.plot(self.grid.x[l, :], self.grid.y[l, :], color="white", lw=0.35, alpha=0.6)
+        for m in range(self.grid.mmax):
+            ax2.plot(self.grid.x[:, m], self.grid.y[:, m], color="white", lw=0.35, alpha=0.6)
+        ax2.plot(self.grid.xw, self.grid.yw, color="k", lw=1.4, label="wall")
+        ax2.plot(self.grid.xcb, self.grid.ycb, color="k", lw=1.2, ls="--", label="centerline")
+        ax2.set_title("ONEDIM Mach Field with Structured Grid Overlay")
+        ax2.set_xlabel("x")
+        ax2.set_ylabel("y")
+        ax2.set_aspect("equal", adjustable="box")
+        ax2.legend(loc="best")
+        cbar = fig2.colorbar(cf, ax=ax2)
+        cbar.set_label("Mach")
+        fig2.tight_layout()
+        fig2.savefig(output_path_2d, bbox_inches="tight")
+        plt.show()
+        plt.close(fig2)
+        print(f"Saved ONEDIM 2D plot: {output_path_2d}")
 
     def plot_residuals(self) -> None:
-        # Placeholder: residual history plot.
-        return
+        import matplotlib.pyplot as plt
+
+        os.makedirs("artifacts/verification", exist_ok=True)
+        output_path = "artifacts/verification/cd_baseline_residual.png"
+
+        res = np.asarray(self.result.residual_history, dtype=float)
+        it = np.arange(1, len(res) + 1)
+
+        fig, ax = plt.subplots(figsize=(7, 4), dpi=140)
+        if len(res) > 0:
+            ax.plot(it, res, marker="o", lw=1.8, color="#1f77b4")
+        ax.set_title("Residual History")
+        ax.set_xlabel("Iteration")
+        ax.set_ylabel("Residual")
+        ax.grid(alpha=0.2)
+        fig.tight_layout()
+        fig.savefig(output_path, bbox_inches="tight")
+        plt.show()
+        plt.close(fig)
+        print(f"Saved residual plot: {output_path}")
+
+    def plot_fig2_style(self) -> None:
+        import matplotlib.pyplot as plt
+        import matplotlib.tri as mtri
+
+        state = self.result.metadata.get("state")
+        if state is None:
+            raise RuntimeError("RunResult metadata does not include state for Fig. 2 style plot.")
+
+        os.makedirs("artifacts/verification", exist_ok=True)
+        output_path = "artifacts/verification/cd_baseline_mach_contours.png"
+
+        gamma = self.result.metadata.get("gamma", 1.4)
+        mach = np.sqrt(state.u[:, :, 0] ** 2 + state.v[:, :, 0] ** 2) / np.sqrt(
+            np.maximum(1.0e-12, gamma * state.p[:, :, 0] / state.rho[:, :, 0])
+        )
+
+        fig, ax_top = plt.subplots(figsize=(8.6, 4.8), dpi=150)
+
+        # Top panel: Mach contours and nozzle wall.
+        levels = [0.6, 1.0, 1.6]
+        cs = ax_top.contour(
+            self.grid.x,
+            self.grid.y,
+            mach,
+            levels=levels,
+            colors="k",
+            linewidths=[1.4, 1.8, 1.4],
+        )
+        ax_top.clabel(
+            cs,
+            cs.levels,
+            inline=True,
+            fmt={0.6: "M = 0.6", 1.0: "1.0", 1.6: "1.6"},
+            fontsize=9,
+        )
+
+        # Overlay verification Mach contours from baseline CSV, if available.
+        # Interpolate scattered CSV data to a dense structured grid first so
+        # reference contour lines are smooth and confined to the nozzle domain.
+        if os.path.exists(self.config.baseline_csv_path):
+            data = np.genfromtxt(self.config.baseline_csv_path, delimiter=",", names=True)
+            rows = np.atleast_1d(data)
+            if rows.size > 0 and all(c in data.dtype.names for c in ("X", "Y", "Mach")):
+                x_ref = np.asarray(rows["X"], dtype=float)
+                y_ref = np.asarray(rows["Y"], dtype=float)
+                mach_ref = np.asarray(rows["Mach"], dtype=float)
+                finite = np.isfinite(x_ref) & np.isfinite(y_ref) & np.isfinite(mach_ref)
+                if np.sum(finite) >= 6:
+                    tri = mtri.Triangulation(x_ref[finite], y_ref[finite])
+                    interp = mtri.LinearTriInterpolator(tri, mach_ref[finite])
+
+                    # Dense sampling grid for smooth contours.
+                    xg = np.linspace(np.min(x_ref[finite]), np.max(x_ref[finite]), 220)
+                    yg = np.linspace(0.0, np.max(y_ref[finite]), 180)
+                    Xg, Yg = np.meshgrid(xg, yg)
+                    Mg = interp(Xg, Yg)
+
+                    # Mask outside nozzle wall/centerline bounds.
+                    ywall = np.interp(xg, self.grid.xw, self.grid.yw)
+                    Ywall = np.tile(ywall, (yg.size, 1))
+                    outside = (Yg < 0.0) | (Yg > Ywall)
+                    Mg = np.ma.masked_where(outside, Mg)
+
+                    cs_ref = ax_top.contour(
+                        Xg,
+                        Yg,
+                        Mg,
+                        levels=levels,
+                        colors="k",
+                        linewidths=[1.0, 1.3, 1.0],
+                        linestyles="--",
+                    )
+                    if len(cs_ref.allsegs) > 0:
+                        ax_top.clabel(
+                            cs_ref,
+                            cs_ref.levels,
+                            inline=True,
+                            fmt={0.6: "ref 0.6", 1.0: "ref 1.0", 1.6: "ref 1.6"},
+                            fontsize=8,
+                        )
+                        ax_top.plot([], [], color="k", ls="--", lw=1.2, label="CSV Mach contours")
+
+        ax_top.plot(self.grid.xw, self.grid.yw, color="k", lw=2.0)
+        ax_top.plot(self.grid.xcb, self.grid.ycb, color="k", lw=1.3)
+        ax_top.set_ylabel("Radius")
+        ax_top.set_xlabel("Axial Distance")
+        ax_top.set_ylim(bottom=0.0)
+        ax_top.grid(alpha=0.15)
+        ax_top.set_title("Mach Number Contours (ONEDIM Field)")
+        ax_top.legend(loc="best")
+
+        fig.tight_layout()
+        fig.savefig(output_path, bbox_inches="tight")
+        plt.show()
+        plt.close(fig)
+        print(f"Saved Mach contour plot: {output_path}")
+
+    def plot_wall_pressure_comparison(self) -> None:
+        import matplotlib.pyplot as plt
+
+        state = self.result.metadata.get("state")
+        if state is None:
+            raise RuntimeError("RunResult metadata does not include state for wall pressure plotting.")
+        if not os.path.exists(self.config.baseline_csv_path):
+            raise RuntimeError(f"Baseline CSV not found: {self.config.baseline_csv_path}")
+
+        os.makedirs("artifacts/verification", exist_ok=True)
+        output_path = "artifacts/verification/cd_baseline_wall_pressure_ratio.png"
+
+        # Model wall pressure ratio from current state.
+        j_wall = self.grid.mmax - 1
+        x_model = self.grid.x[:, j_wall]
+        pt_psf = float(np.mean(state.pt)) * 144.0 if np.any(state.pt > 0.0) else 1.0
+        p_ratio_model = state.p[:, j_wall, 0] / max(pt_psf, 1.0e-12)
+
+        # Reference wall pressure ratio from baseline CSV.
+        data = np.genfromtxt(self.config.baseline_csv_path, delimiter=",", names=True)
+        rows = np.atleast_1d(data)
+        if rows.size == 0:
+            raise RuntimeError(f"No rows found in baseline CSV: {self.config.baseline_csv_path}")
+        if "M" not in data.dtype.names or "X" not in data.dtype.names or "P" not in data.dtype.names:
+            raise RuntimeError(f"CSV missing one of required columns: M, X, P. Found {data.dtype.names}")
+
+        m_wall = int(np.nanmax(np.asarray(rows["M"], dtype=float)))
+        wall_rows = [r for r in rows if int(round(float(r["M"]))) == m_wall]
+        if len(wall_rows) == 0:
+            raise RuntimeError("No wall rows found in baseline CSV.")
+        wall_rows = sorted(wall_rows, key=lambda r: float(r["X"]))
+        x_ref = np.array([float(r["X"]) for r in wall_rows], dtype=float)
+        p_ref_psia = np.array([float(r["P"]) for r in wall_rows], dtype=float)
+        pt_psia = float(np.mean(state.pt)) if np.any(state.pt > 0.0) else 1.0
+        p_ratio_ref = p_ref_psia / max(pt_psia, 1.0e-12)
+
+        fig, ax = plt.subplots(figsize=(8.6, 4.8), dpi=150)
+        ax.plot(x_model, p_ratio_model, color="k", lw=2.0, label="Model wall P/Pt")
+        ax.scatter(x_ref, p_ratio_ref, s=20, facecolors="none", edgecolors="k", label="CSV wall data")
+        ax.set_title("Wall Pressure Ratio vs Axial Distance")
+        ax.set_xlabel("Axial Distance")
+        ax.set_ylabel("Wall Pressure Ratio")
+        ax.set_ylim(bottom=0.0)
+        ax.grid(alpha=0.15)
+        ax.legend(loc="best")
+        fig.tight_layout()
+        fig.savefig(output_path, bbox_inches="tight")
+        plt.show()
+        plt.close(fig)
+        print(f"Saved wall pressure comparison plot: {output_path}")
 
 
 
@@ -311,10 +788,12 @@ if __name__ == "__main__":
     verify_report = verifier.verify(config, grid, result)
 
     # 6) Run Plots.
-    plots = Plots(grid, result, verify_report)
+    plots = Plots(config, grid, result, verify_report)
     plots.plot_grid()
     plots.plot_solution()
     plots.plot_residuals()
+    plots.plot_fig2_style()
+    plots.plot_wall_pressure_comparison()
 
     # 7) Print concise run summary.
     print("NAP run summary")
@@ -329,4 +808,15 @@ if __name__ == "__main__":
         f"V_MAE={verify_report['v_mae_fps']}, "
         f"P_MAE={verify_report['p_mae_psia']}, "
         f"Mach_MAE={verify_report['mach_mae']}"
+    )
+    print(
+        "verify wall ratio: "
+        f"P/Pt_MAE={verify_report['wall_p_ratio_mae']}, "
+        f"P/Pt_MAPE%={verify_report['wall_p_ratio_mape_pct']}"
+    )
+    print(
+        "onedim: "
+        f"Mach_inlet={result.metadata['mach_inlet']:.3f}, "
+        f"Mach_throat={result.metadata['mach_throat']:.3f}, "
+        f"Mach_exit={result.metadata['mach_exit']:.3f}"
     )
