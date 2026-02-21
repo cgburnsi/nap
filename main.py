@@ -30,6 +30,10 @@ class RunConfig:
         tt_in_f=80.0,
         onedim_mode="subsonic_sonic_supersonic",
         csv_domain_tol=1.0e-3,
+        regression_margin_frac=0.20,
+        baseline_mach_mae=0.07736578378450953,
+        baseline_p_mae_psia=1.8779507955979222,
+        baseline_wall_p_ratio_mae=0.030674061764350037,
     ):
         self.case_name = case_name
         self.lmax = lmax
@@ -54,6 +58,10 @@ class RunConfig:
         self.tt_in_f = tt_in_f
         self.onedim_mode = onedim_mode
         self.csv_domain_tol = csv_domain_tol
+        self.regression_margin_frac = regression_margin_frac
+        self.baseline_mach_mae = baseline_mach_mae
+        self.baseline_p_mae_psia = baseline_p_mae_psia
+        self.baseline_wall_p_ratio_mae = baseline_wall_p_ratio_mae
 
 
 class Grid:
@@ -452,6 +460,35 @@ class Verifier:
             if not np.isfinite(value):
                 raise RuntimeError(f"Verification metric '{key}' is not finite.")
 
+        # Modern regression gates: fail if key errors regress beyond baseline + margin.
+        margin = float(config.regression_margin_frac)
+        gates = {
+            "mach_mae": {
+                "baseline": float(config.baseline_mach_mae),
+                "current": float(metrics["mach_mae"]),
+            },
+            "p_mae_psia": {
+                "baseline": float(config.baseline_p_mae_psia),
+                "current": float(metrics["p_mae_psia"]),
+            },
+            "wall_p_ratio_mae": {
+                "baseline": float(config.baseline_wall_p_ratio_mae),
+                "current": float(metrics["wall_p_ratio_mae"]),
+            },
+        }
+        for gate_name, gate in gates.items():
+            baseline = gate["baseline"]
+            current = gate["current"]
+            allowed = baseline * (1.0 + margin)
+            gate["allowed"] = allowed
+            gate["passed"] = bool(current <= allowed)
+            if not gate["passed"]:
+                raise RuntimeError(
+                    f"Regression gate failed for {gate_name}: "
+                    f"current={current:.6g} > allowed={allowed:.6g} "
+                    f"(baseline={baseline:.6g}, margin={margin:.1%})"
+                )
+
         lt_value = getattr(grid, "lt", None)
         return {
             "checked": True,
@@ -471,6 +508,8 @@ class Verifier:
             "mach_mape_pct": metrics["mach_mape_pct"],
             "wall_p_ratio_mae": metrics["wall_p_ratio_mae"],
             "wall_p_ratio_mape_pct": metrics["wall_p_ratio_mape_pct"],
+            "regression_margin_frac": margin,
+            "regression_gates": gates,
         }
 
 
@@ -813,6 +852,29 @@ if __name__ == "__main__":
         "verify wall ratio: "
         f"P/Pt_MAE={verify_report['wall_p_ratio_mae']}, "
         f"P/Pt_MAPE%={verify_report['wall_p_ratio_mape_pct']}"
+    )
+    gates = verify_report["regression_gates"]
+    print("regression gates:")
+    print(
+        "  mach_mae: "
+        f"baseline={gates['mach_mae']['baseline']:.6g}, "
+        f"current={gates['mach_mae']['current']:.6g}, "
+        f"allowed={gates['mach_mae']['allowed']:.6g}, "
+        f"pass={gates['mach_mae']['passed']}"
+    )
+    print(
+        "  p_mae_psia: "
+        f"baseline={gates['p_mae_psia']['baseline']:.6g}, "
+        f"current={gates['p_mae_psia']['current']:.6g}, "
+        f"allowed={gates['p_mae_psia']['allowed']:.6g}, "
+        f"pass={gates['p_mae_psia']['passed']}"
+    )
+    print(
+        "  wall_p_ratio_mae: "
+        f"baseline={gates['wall_p_ratio_mae']['baseline']:.6g}, "
+        f"current={gates['wall_p_ratio_mae']['current']:.6g}, "
+        f"allowed={gates['wall_p_ratio_mae']['allowed']:.6g}, "
+        f"pass={gates['wall_p_ratio_mae']['passed']}"
     )
     print(
         "onedim: "
