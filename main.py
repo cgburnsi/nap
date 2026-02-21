@@ -331,6 +331,8 @@ class Solver:
         if bool(self.config.enable_transient_stub):
             # Predictor-style multi-sweep stub for residual-shape verification.
             u_curr = state.u[:, :, 0].copy()
+            p_curr = state.p[:, :, 0]
+            rho_curr = state.rho[:, :, 0]
             interior = (slice(1, grid.lmax - 1), slice(1, grid.mmax - 1))
             residual_history = [1.0]
             nsweeps = max(1, int(self.config.residual_trend_min_points) - 1)
@@ -344,7 +346,11 @@ class Solver:
                         dx = max(grid.x[l + 1, 1] - grid.x[l - 1, 1], 1.0e-12)
                         for m in range(1, grid.mmax - 1):
                             du_dx = (u_curr[l + 1, m] - u_curr[l - 1, m]) / dx
-                            u_next[l, m] = u_curr[l, m] - dt_stub * u_curr[l, m] * du_dx
+                            dp_dx = (p_curr[l + 1, m] - p_curr[l - 1, m]) / dx
+                            rho_local = max(rho_curr[l, m], 1.0e-12)
+                            u_next[l, m] = u_curr[l, m] - dt_stub * (
+                                u_curr[l, m] * du_dx + dp_dx / rho_local
+                            )
 
                     denom = np.maximum(np.abs(u_curr[interior]), 1.0e-12)
                     rel = np.abs(u_next[interior] - u_curr[interior]) / denom
