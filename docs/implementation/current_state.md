@@ -26,8 +26,9 @@
   - `residual_trend_min_points = 10`
   - `residual_end_over_start_max = 0.50`
   - `residual_nonincreasing_frac_min = 0.70`
-- Synthetic residual harness (verification plumbing) is currently enabled by default:
-  - `use_synthetic_residual_history = True`
+- One-step transient stub now generates solver-sourced residual history by default (`enable_transient_stub = True`).
+- Synthetic residual harness remains available as opt-in fallback:
+  - `use_synthetic_residual_history = False` (default)
   - `synthetic_residual_points = 10`
 - Hard CSV domain validity check.
 - Hard finite-metric check.
@@ -37,8 +38,8 @@
   - `wall_p_ratio_mae`
 
 ## Known Gaps
-- No transient marching implementation yet.
-- Residual history is currently synthetic placeholder data on this branch to exercise residual-shape gates.
+- Full transient marching is not implemented yet.
+- Current residual history is produced by a predictor-style transient stub (multi-sweep), not full marching.
 - Pressure ratio convention alignment to legacy/reference plotting method may still need refinement if new reference evidence appears.
 - Current runtime tracks two wall pressure-ratio diagnostics:
   - canonical/gated: `P/Pt`
@@ -51,7 +52,7 @@
 
 ## Next Recommended Baby Steps
 1. Keep `P/Pt` as canonical unless stronger reference-method evidence suggests a change.
-2. Replace synthetic residual harness with real marching residual history and keep the same convergence-shape criteria.
+2. Replace transient stub with full marching residual history and keep the same convergence-shape criteria.
 3. Decide when to convert relative no-regression gates into absolute target gates.
 
 ## Resume Checklist

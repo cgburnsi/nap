@@ -37,7 +37,7 @@ class RunConfig:
         residual_trend_min_points=10,
         residual_end_over_start_max=0.50,
         residual_nonincreasing_frac_min=0.70,
-        use_synthetic_residual_history=True,
+        use_synthetic_residual_history=False,
         synthetic_residual_points=10,
         enable_transient_stub=True,
         enable_plots=True,
