@@ -23,6 +23,7 @@ def default_case1_config():
         "fdt": 5,
         "tconv": 1.0e-5,
         "artificial_viscosity": 0.02,
+        "onedim_supersonic_after_throat": False,
         "baseline_csv": "docs/verification/baselines/cd_nozzle_converged_solution.csv",
     }
 
@@ -46,14 +47,100 @@ def build_geometry(cfg):
     return {"x_line": x, "r_wall": r_wall, "X": X, "Y": Y}
 
 
+def area_mach_ratio(gamma, mach):
+    gm1 = gamma - 1.0
+    gp1 = gamma + 1.0
+    term = (2.0 / gp1) * (1.0 + 0.5 * gm1 * mach * mach)
+    exp = gp1 / (2.0 * gm1)
+    return (1.0 / mach) * (term**exp)
+
+
+def solve_mach_from_area_ratio(gamma, area_ratio, branch):
+    area_ratio = max(area_ratio, 1.0)
+
+    if abs(area_ratio - 1.0) < 1.0e-10:
+        return 1.0
+
+    if branch == "subsonic":
+        lo, hi = 1.0e-6, 1.0 - 1.0e-8
+        guess = 0.2
+    else:
+        lo, hi = 1.0 + 1.0e-8, 8.0
+        guess = 2.0
+
+    target = area_ratio
+    m = guess
+
+    for _ in range(40):
+        f = area_mach_ratio(gamma, m) - target
+        if abs(f) < 1.0e-10:
+            return m
+
+        h = max(1.0e-6, 1.0e-4 * m)
+        fp = area_mach_ratio(gamma, m + h) - target
+        fm = area_mach_ratio(gamma, m - h) - target
+        dfdm = (fp - fm) / (2.0 * h)
+        if abs(dfdm) < 1.0e-12:
+            break
+
+        m_new = m - f / dfdm
+        if m_new <= lo or m_new >= hi:
+            break
+        m = m_new
+
+    for _ in range(80):
+        mid = 0.5 * (lo + hi)
+        fmid = area_mach_ratio(gamma, mid) - target
+        if abs(fmid) < 1.0e-10 or (hi - lo) < 1.0e-10:
+            return mid
+
+        flo = area_mach_ratio(gamma, lo) - target
+        if np.sign(fmid) == np.sign(flo):
+            lo = mid
+        else:
+            hi = mid
+
+    return 0.5 * (lo + hi)
+
+
+def onedim_isentropic_profile(cfg, geom):
+    gamma = cfg["gamma"]
+    rgas = cfg["rgas"]
+    pt = cfg["pt_inlet"]
+    tt = cfg["tt_inlet"]
+
+    r = geom["r_wall"]
+    throat_idx = int(np.argmin(r))
+    area = np.pi * r * r
+    area_star = np.min(area)
+    area_ratio = area / area_star
+
+    mach = np.empty_like(r)
+    for i in range(r.size):
+        if i < throat_idx:
+            branch = "subsonic"
+        elif i > throat_idx and cfg["onedim_supersonic_after_throat"]:
+            branch = "supersonic"
+        else:
+            branch = "subsonic"
+        mach[i] = solve_mach_from_area_ratio(gamma, area_ratio[i], branch)
+
+    t = tt / (1.0 + 0.5 * (gamma - 1.0) * mach * mach)
+    p = pt / (1.0 + 0.5 * (gamma - 1.0) * mach * mach) ** (gamma / (gamma - 1.0))
+    rho = p / (rgas * t)
+    a = np.sqrt(gamma * p / np.maximum(rho, 1.0e-12))
+    u = mach * a
+    return u, p, rho
+
+
 def initialize_state(cfg, geom):
     shape = geom["X"].shape
+    u_1d, p_1d, rho_1d = onedim_isentropic_profile(cfg, geom)
 
-    # Keep initialization simple and stable; replace with ONEDIM area-Mach solve next.
-    u = np.full(shape, 130.0)
+    u = np.repeat(u_1d[:, None], shape[1], axis=1)
     v = np.zeros(shape)
-    p = np.full(shape, cfg["pe_exit"])
-    rho = np.full(shape, 0.35)
+    p = np.repeat(p_1d[:, None], shape[1], axis=1)
+    rho = np.repeat(rho_1d[:, None], shape[1], axis=1)
 
     return {"u": u, "v": v, "p": p, "rho": rho, "time": 0.0}
 
@@ -207,11 +294,10 @@ def print_summary(history, metrics):
         print(f"  {key:>4}: {m['rmse']:.6e} / {m['relative_rmse']:.6e}")
 
     print("\nNext implementation targets:")
-    print("  1) Replace initialize_state with ONEDIM area-Mach initialization.")
-    print("  2) Replace predictor/corrector placeholders with NAP Eqns (interior update).")
-    print("  3) Implement characteristic BCs (inlet, exit, wall, jet boundary).")
-    print("  4) Replace viscosity placeholder with NAP shock model.")
-    print("  5) Track mass flow/thrust and tune to case-1 baseline.")
+    print("  1) Replace predictor/corrector placeholders with NAP Eqns (interior update).")
+    print("  2) Implement characteristic BCs (inlet, exit, wall, jet boundary).")
+    print("  3) Replace viscosity placeholder with NAP shock model.")
+    print("  4) Track mass flow/thrust and tune to case-1 baseline.")
 
 
 def main():
