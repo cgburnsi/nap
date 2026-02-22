@@ -76,7 +76,7 @@ C                                                                       GEO  500
       IF (X,GT,XT2,AND,X,LE,XE) GO TO 90                                GEO  760
 C                                                                       GEO  770
 50    YW(L)=RI+RC*(COS(ASIN((X-XI)/RCI))-1.0)                           GEO  780
-      NXNY(L)=(XI-XI)/(YW(L)-RI+RCI)                                    GEO  790
+      NXNY(L)=(X-XI)/(YW(L)-RI+RCI)                                     GEO  790
       GO TO 100                                                         GEO  800
 C                                                                       GEO  810
 60    YW(L)=RT1+(XT1-X)*TAN(ANI)                                        GEO  820
