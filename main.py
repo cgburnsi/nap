@@ -22,6 +22,7 @@ class RunConfig:
         ani_deg=44.88,
         ane_deg=15.0,
         baseline_csv_path="docs/verification/baselines/cd_nozzle_converged_solution.csv",
+        verify_level=1,
         xt_expected=2.554,
         xt_tol=0.005,
         gamma=1.4,
@@ -40,6 +41,17 @@ class RunConfig:
         use_synthetic_residual_history=False,
         synthetic_residual_points=10,
         enable_transient_stub=True,
+        enable_inlet_bc=False,
+        enable_wall_bc=False,
+        enable_exit_bc=False,
+        exit_back_pressure_psia=None,
+        transient_stub_dt_base=1.0e-4,
+        transient_cfl_target=0.005,
+        enable_transient_logging=True,
+        transient_log_every=1,
+        transient_u_rel_jump_max=5.0,
+        transient_v_rel_jump_max=5.0,
+        transient_p_rel_jump_max=5.0,
         enable_plots=True,
     ):
         self.case_name = case_name
@@ -57,6 +69,7 @@ class RunConfig:
         self.ani_deg = ani_deg
         self.ane_deg = ane_deg
         self.baseline_csv_path = baseline_csv_path
+        self.verify_level = verify_level
         self.xt_expected = xt_expected
         self.xt_tol = xt_tol
         self.gamma = gamma
@@ -75,6 +88,17 @@ class RunConfig:
         self.use_synthetic_residual_history = use_synthetic_residual_history
         self.synthetic_residual_points = synthetic_residual_points
         self.enable_transient_stub = enable_transient_stub
+        self.enable_inlet_bc = enable_inlet_bc
+        self.enable_wall_bc = enable_wall_bc
+        self.enable_exit_bc = enable_exit_bc
+        self.exit_back_pressure_psia = exit_back_pressure_psia
+        self.transient_stub_dt_base = transient_stub_dt_base
+        self.transient_cfl_target = transient_cfl_target
+        self.enable_transient_logging = enable_transient_logging
+        self.transient_log_every = transient_log_every
+        self.transient_u_rel_jump_max = transient_u_rel_jump_max
+        self.transient_v_rel_jump_max = transient_v_rel_jump_max
+        self.transient_p_rel_jump_max = transient_p_rel_jump_max
         self.enable_plots = enable_plots
 
 
@@ -328,41 +352,256 @@ class Solver:
         iterations = 0
         residual_history = [1.0]
         residual_source = "solver"
+        converged = False
+        transient_cfl_u_max = float("nan")
+        transient_dt_min = float("nan")
+        transient_dt_max = float("nan")
         if bool(self.config.enable_transient_stub):
-            # Predictor-style multi-sweep stub for residual-shape verification.
-            u_curr = state.u[:, :, 0].copy()
-            p_curr = state.p[:, :, 0]
-            rho_curr = state.rho[:, :, 0]
+            # Pseudo-time march kernel (interior-only for now).
             interior = (slice(1, grid.lmax - 1), slice(1, grid.mmax - 1))
-            residual_history = [1.0]
-            nsweeps = max(1, int(self.config.residual_trend_min_points) - 1)
-            dt_base = 1.0e-6
+            cfl_u_max = 0.0
+            converged = False
+            n0 = 0
+            n1 = 1
+            dt_base = float(self.config.transient_stub_dt_base)
+            min_sweeps = max(1, int(self.config.residual_trend_min_points) - 1)
+            inlet_u_ref = state.u[0, :, 0].copy()
+            inlet_p_ref = state.p[0, :, 0].copy()
+            inlet_rho_ref = state.rho[0, :, 0].copy()
+            inlet_v_ref = state.v[0, :, 0].copy()
+            if self.config.exit_back_pressure_psia is None:
+                p_back_psf = float(np.mean(state.p[-1, :, 0]))
+            else:
+                p_back_psf = float(self.config.exit_back_pressure_psia) * 144.0
 
-            for sweep in range(nsweeps):
-                u_next = u_curr.copy()
+            for it in range(1, int(self.config.nmax) + 1):
+                # Freeze/copy boundaries and non-marched fields first.
+                state.u[:, :, n1] = state.u[:, :, n0]
+                state.p[:, :, n1] = state.p[:, :, n0]
+                state.rho[:, :, n1] = state.rho[:, :, n0]
+                state.v[:, :, n1] = state.v[:, :, n0]
+
                 if grid.lmax >= 3 and grid.mmax >= 3:
-                    dt_stub = dt_base / (1.0 + 0.25 * sweep)
+                    # Adaptive pseudo-time step based on local convective-acoustic speed.
+                    char_max = 0.0
                     for l in range(1, grid.lmax - 1):
                         dx = max(grid.x[l + 1, 1] - grid.x[l - 1, 1], 1.0e-12)
                         for m in range(1, grid.mmax - 1):
-                            du_dx = (u_curr[l + 1, m] - u_curr[l - 1, m]) / dx
-                            dp_dx = (p_curr[l + 1, m] - p_curr[l - 1, m]) / dx
-                            rho_local = max(rho_curr[l, m], 1.0e-12)
-                            u_next[l, m] = u_curr[l, m] - dt_stub * (
-                                u_curr[l, m] * du_dx + dp_dx / rho_local
-                            )
+                            dy = max(grid.y[l, m + 1] - grid.y[l, m - 1], 1.0e-12)
+                            u0 = state.u[l, m, n0]
+                            v0 = state.v[l, m, n0]
+                            p0 = max(state.p[l, m, n0], 1.0e-10)
+                            rho0 = max(state.rho[l, m, n0], 1.0e-12)
+                            a0 = np.sqrt(max(self.config.gamma * p0 / rho0, 1.0e-12))
+                            char_local = (abs(u0) + a0) / dx + (abs(v0) + a0) / dy
+                            char_max = max(char_max, char_local)
+                    if char_max > 0.0:
+                        dt = min(dt_base, float(self.config.transient_cfl_target) / char_max)
+                    else:
+                        dt = dt_base
+                    transient_dt_min = dt if not np.isfinite(transient_dt_min) else min(transient_dt_min, dt)
+                    transient_dt_max = dt if not np.isfinite(transient_dt_max) else max(transient_dt_max, dt)
 
-                    denom = np.maximum(np.abs(u_curr[interior]), 1.0e-12)
-                    rel = np.abs(u_next[interior] - u_curr[interior]) / denom
-                    res = float(np.max(rel)) if rel.size > 0 else 0.0
+                    for l in range(1, grid.lmax - 1):
+                        dx = max(grid.x[l + 1, 1] - grid.x[l - 1, 1], 1.0e-12)
+                        cfl_row = np.max(np.abs(state.u[l, 1 : grid.mmax - 1, n0])) * dt / dx
+                        cfl_u_max = max(cfl_u_max, float(cfl_row))
+                        for m in range(1, grid.mmax - 1):
+                            dy = max(grid.y[l, m + 1] - grid.y[l, m - 1], 1.0e-12)
+                            u0 = state.u[l, m, n0]
+                            v0 = state.v[l, m, n0]
+                            p0 = state.p[l, m, n0]
+                            rho0 = max(state.rho[l, m, n0], 1.0e-12)
+
+                            du_dx = (state.u[l + 1, m, n0] - state.u[l - 1, m, n0]) / dx
+                            du_dy = (state.u[l, m + 1, n0] - state.u[l, m - 1, n0]) / dy
+                            dv_dx = (state.v[l + 1, m, n0] - state.v[l - 1, m, n0]) / dx
+                            dv_dy = (state.v[l, m + 1, n0] - state.v[l, m - 1, n0]) / dy
+                            dp_dx = (state.p[l + 1, m, n0] - state.p[l - 1, m, n0]) / dx
+                            dp_dy = (state.p[l, m + 1, n0] - state.p[l, m - 1, n0]) / dy
+                            drho_dx = (state.rho[l + 1, m, n0] - state.rho[l - 1, m, n0]) / dx
+                            drho_dy = (state.rho[l, m + 1, n0] - state.rho[l, m - 1, n0]) / dy
+
+                            div_u = du_dx + dv_dy
+                            du_dt = -(u0 * du_dx + v0 * du_dy) - dp_dx / rho0
+                            dv_dt = -(u0 * dv_dx + v0 * dv_dy) - dp_dy / rho0
+                            drho_dt = -(u0 * drho_dx + v0 * drho_dy + rho0 * div_u)
+                            dp_dt = -(u0 * dp_dx + v0 * dp_dy + self.config.gamma * p0 * div_u)
+
+                            state.u[l, m, n1] = u0 + dt * du_dt
+                            state.v[l, m, n1] = v0 + dt * dv_dt
+                            state.rho[l, m, n1] = max(rho0 + dt * drho_dt, 1.0e-10)
+                            state.p[l, m, n1] = max(p0 + dt * dp_dt, 1.0e-10)
+
+                    # Boundary-condition updates (phase 2) after interior update.
+                    if bool(self.config.enable_inlet_bc):
+                        # Characteristic-style subsonic inlet using prescribed totals.
+                        l_in = 0
+                        l_im = 1
+                        gam = self.config.gamma
+                        gm1 = gam - 1.0
+                        cp = gam * self.config.rgas / gm1
+                        for m in range(grid.mmax):
+                            ui = state.u[l_im, m, n1]
+                            vi = state.v[l_im, m, n1]
+                            pi = max(state.p[l_im, m, n1], 1.0e-10)
+                            rhoi = max(state.rho[l_im, m, n1], 1.0e-12)
+                            ai = np.sqrt(max(gam * pi / rhoi, 1.0e-12))
+                            rminus = ui - 2.0 * ai / gm1
+
+                            tt0 = float(state.tt[m]) + 460.0
+                            pt0 = float(state.pt[m]) * 144.0
+
+                            # Solve scalar inlet a from 1D characteristic+energy relation.
+                            a = max(ai, 1.0)
+                            for _ in range(20):
+                                u = rminus + 2.0 * a / gm1
+                                f = a * a + 0.5 * gm1 * u * u - gam * self.config.rgas * tt0
+                                df = 2.0 * a + 2.0 * u
+                                if abs(df) < 1.0e-12:
+                                    break
+                                da = -f / df
+                                a = max(a + da, 1.0e-6)
+                                if abs(da) < 1.0e-8:
+                                    break
+                            u_in = rminus + 2.0 * a / gm1
+                            t_in = max(a * a / (gam * self.config.rgas), 1.0e-6)
+                            mach_in = abs(u_in) / max(a, 1.0e-12)
+                            dem = 1.0 + 0.5 * gm1 * mach_in * mach_in
+                            p_in = pt0 / (dem ** (gam / gm1))
+                            rho_in = p_in / (self.config.rgas * t_in)
+
+                            theta = np.deg2rad(float(state.theta[m]))
+                            v_in = u_in * np.tan(theta)
+
+                            state.u[l_in, m, n1] = u_in
+                            state.v[l_in, m, n1] = v_in
+                            state.p[l_in, m, n1] = max(p_in, 1.0e-10)
+                            state.rho[l_in, m, n1] = max(rho_in, 1.0e-12)
+                    else:
+                        # Preserve original inlet profile when inlet BC is inactive.
+                        state.u[0, :, n1] = inlet_u_ref
+                        state.p[0, :, n1] = inlet_p_ref
+                        state.rho[0, :, n1] = inlet_rho_ref
+                        state.v[0, :, n1] = inlet_v_ref
+
+                    if bool(self.config.enable_wall_bc):
+                        # Wall tangency BC + normal-gradient compatibility proxies.
+                        j_wall = grid.mmax - 1
+                        j_im1 = grid.mmax - 2
+                        state.v[:, j_wall, n1] = -state.u[:, j_wall, n1] * grid.nxny
+                        state.p[:, j_wall, n1] = state.p[:, j_im1, n1]
+                        state.rho[:, j_wall, n1] = state.rho[:, j_im1, n1]
+
+                    if bool(self.config.enable_exit_bc):
+                        # Regime-based exit BC: supersonic extrapolation, subsonic pressure-corrected.
+                        l_exit = grid.lmax - 1
+                        l_im1 = grid.lmax - 2
+                        l_im2 = grid.lmax - 3 if grid.lmax >= 3 else l_im1
+                        gam = self.config.gamma
+                        for m in range(grid.mmax):
+                            u1 = state.u[l_im1, m, n1]
+                            v1 = state.v[l_im1, m, n1]
+                            p1 = max(state.p[l_im1, m, n1], 1.0e-10)
+                            rho1 = max(state.rho[l_im1, m, n1], 1.0e-12)
+                            a1 = np.sqrt(max(gam * p1 / rho1, 1.0e-12))
+                            mach1 = np.sqrt(u1 * u1 + v1 * v1) / max(a1, 1.0e-12)
+                            if mach1 >= 1.0:
+                                state.u[l_exit, m, n1] = state.u[l_im1, m, n1] + (
+                                    state.u[l_im1, m, n1] - state.u[l_im2, m, n1]
+                                )
+                                state.v[l_exit, m, n1] = state.v[l_im1, m, n1] + (
+                                    state.v[l_im1, m, n1] - state.v[l_im2, m, n1]
+                                )
+                                state.p[l_exit, m, n1] = state.p[l_im1, m, n1] + (
+                                    state.p[l_im1, m, n1] - state.p[l_im2, m, n1]
+                                )
+                                state.rho[l_exit, m, n1] = state.rho[l_im1, m, n1] + (
+                                    state.rho[l_im1, m, n1] - state.rho[l_im2, m, n1]
+                                )
+                            else:
+                                p_exit = p_back_psf
+                                t1 = max(p1 / (rho1 * self.config.rgas), 1.0e-6)
+                                rho_exit = p_exit / (self.config.rgas * t1)
+                                u_exit = u1 + (p1 - p_exit) / max(rho1 * a1, 1.0e-12)
+                                state.u[l_exit, m, n1] = u_exit
+                                state.v[l_exit, m, n1] = v1
+                                state.p[l_exit, m, n1] = p_exit
+                                state.rho[l_exit, m, n1] = rho_exit
+                        state.p[l_exit, :, n1] = np.maximum(state.p[l_exit, :, n1], 1.0e-10)
+                        state.rho[l_exit, :, n1] = np.maximum(state.rho[l_exit, :, n1], 1.0e-12)
+
+                    u_new = state.u[interior + (n1,)]
+                    u_old = state.u[interior + (n0,)]
+                    v_new = state.v[interior + (n1,)]
+                    v_old = state.v[interior + (n0,)]
+                    p_new = state.p[interior + (n1,)]
+                    p_old = state.p[interior + (n0,)]
+                    rho_new = state.rho[interior + (n1,)]
+                    rho_old = state.rho[interior + (n0,)]
+
+                    if not (
+                        np.all(np.isfinite(u_new))
+                        and np.all(np.isfinite(v_new))
+                        and np.all(np.isfinite(p_new))
+                        and np.all(np.isfinite(rho_new))
+                    ):
+                        raise RuntimeError("Transient march produced non-finite interior state.")
+                    if np.any(p_new <= 0.0) or np.any(rho_new <= 0.0):
+                        raise RuntimeError("Transient march produced non-positive interior pressure/density.")
+
+                    rel_u = np.abs(u_new - u_old) / np.maximum(np.abs(u_old), 1.0e-12)
+                    v_scale = max(float(np.max(np.abs(u_old))) * 0.1, 1.0)
+                    rel_v = np.abs(v_new - v_old) / np.maximum(np.abs(v_old), v_scale)
+                    rel_p = np.abs(p_new - p_old) / np.maximum(np.abs(p_old), 1.0e-12)
+                    rel_rho = np.abs(rho_new - rho_old) / np.maximum(np.abs(rho_old), 1.0e-12)
+                    res_u = float(np.max(rel_u)) if rel_u.size > 0 else 0.0
+                    res_v = float(np.max(rel_v)) if rel_v.size > 0 else 0.0
+                    res_p = float(np.max(rel_p)) if rel_p.size > 0 else 0.0
+                    res_rho = float(np.max(rel_rho)) if rel_rho.size > 0 else 0.0
+                    if res_u > float(self.config.transient_u_rel_jump_max):
+                        raise RuntimeError(
+                            "Transient march exceeded relative u-jump guardrail: "
+                            f"res={res_u:.6g} > max={self.config.transient_u_rel_jump_max:.6g}"
+                        )
+                    if res_v > float(self.config.transient_v_rel_jump_max):
+                        raise RuntimeError(
+                            "Transient march exceeded relative v-jump guardrail: "
+                            f"res={res_v:.6g} > max={self.config.transient_v_rel_jump_max:.6g}"
+                        )
+                    if res_p > float(self.config.transient_p_rel_jump_max):
+                        raise RuntimeError(
+                            "Transient march exceeded relative p-jump guardrail: "
+                            f"res={res_p:.6g} > max={self.config.transient_p_rel_jump_max:.6g}"
+                        )
+                    res = max(res_u, res_v, res_p, res_rho)
                 else:
                     res = 0.0
 
                 residual_history.append(max(res, 1.0e-14))
-                u_curr = u_next
+                iterations = it
+                if bool(self.config.enable_transient_logging):
+                    every = max(1, int(self.config.transient_log_every))
+                    if it == 1 or it % every == 0 or it >= min_sweeps:
+                        print(
+                            "march step "
+                            f"{it:04d}: res={res:.6e}, dt={dt:.6e}, cfl_u_max={cfl_u_max:.6e}"
+                        )
+                if it >= min_sweeps and res <= float(self.config.tconv):
+                    converged = True
+                    n0 = n1
+                    break
+                n0, n1 = n1, n0
 
-            iterations = nsweeps
+            # Preserve level 0 as the initialization snapshot and store
+            # the marched final state on level 1 for post-processing.
+            state.u[:, :, 1] = state.u[:, :, n0]
+            state.p[:, :, 1] = state.p[:, :, n0]
+            state.rho[:, :, 1] = state.rho[:, :, n0]
+            state.v[:, :, 1] = state.v[:, :, n0]
+
             residual_source = "solver"
+            transient_cfl_u_max = float(cfl_u_max)
         elif bool(self.config.use_synthetic_residual_history) and iterations == 0:
             nres = max(2, int(self.config.synthetic_residual_points))
             # Deterministic placeholder sequence to exercise residual-shape gates.
@@ -370,7 +609,7 @@ class Solver:
             residual_source = "synthetic"
 
         return RunResult(
-            converged=False,
+            converged=converged,
             iterations=iterations,
             residual_history=residual_history,
             metadata={
@@ -378,6 +617,12 @@ class Solver:
                 "state": state,
                 "gamma": gamma,
                 "residual_source": residual_source,
+                "transient_cfl_u_max": transient_cfl_u_max,
+                "transient_dt_min": transient_dt_min,
+                "transient_dt_max": transient_dt_max,
+                "inlet_bc_active": bool(self.config.enable_inlet_bc),
+                "wall_bc_active": bool(self.config.enable_wall_bc),
+                "exit_bc_active": bool(self.config.enable_exit_bc),
                 "mach_inlet": float(mach_l[0]),
                 "mach_throat": float(mach_l[grid.lt]),
                 "mach_exit": float(mach_l[-1]),
@@ -417,6 +662,28 @@ class Verifier:
                 "Residual source check failed: expected one of "
                 f"{sorted(valid_residual_sources)}, got {residual_source!r}"
             )
+        if residual_source == "solver":
+            cfl_u_max = result.metadata.get("transient_cfl_u_max")
+            if cfl_u_max is None or not np.isfinite(float(cfl_u_max)) or float(cfl_u_max) < 0.0:
+                raise RuntimeError(
+                    "Transient CFL check failed for solver residual source: "
+                    f"transient_cfl_u_max={cfl_u_max!r}"
+                )
+            dt_min = result.metadata.get("transient_dt_min")
+            dt_max = result.metadata.get("transient_dt_max")
+            if (
+                dt_min is None
+                or dt_max is None
+                or not np.isfinite(float(dt_min))
+                or not np.isfinite(float(dt_max))
+                or float(dt_min) <= 0.0
+                or float(dt_max) <= 0.0
+                or float(dt_min) > float(dt_max)
+            ):
+                raise RuntimeError(
+                    "Transient dt range check failed for solver residual source: "
+                    f"transient_dt_min={dt_min!r}, transient_dt_max={dt_max!r}"
+                )
 
         residuals = np.asarray(result.residual_history, dtype=float)
         if residuals.size == 0:
@@ -515,11 +782,18 @@ class Verifier:
                     )
 
         gamma = float(result.metadata.get("gamma", config.gamma))
-        u_model = state.u[:, :, 0]
-        v_model = state.v[:, :, 0]
-        p_model_psia = state.p[:, :, 0] / 144.0
-        rho_model = state.rho[:, :, 0]
-        a_model = np.sqrt(np.maximum(1.0e-12, gamma * state.p[:, :, 0] / rho_model))
+        nlevels = state.u.shape[2]
+        level = int(config.verify_level)
+        if level < 0 or level >= nlevels:
+            raise RuntimeError(
+                f"verify_level={level} is out of range for available levels [0, {nlevels - 1}]"
+            )
+
+        u_model = state.u[:, :, level]
+        v_model = state.v[:, :, level]
+        p_model_psia = state.p[:, :, level] / 144.0
+        rho_model = state.rho[:, :, level]
+        a_model = np.sqrt(np.maximum(1.0e-12, gamma * state.p[:, :, level] / rho_model))
         mach_model = np.sqrt(u_model * u_model + v_model * v_model) / a_model
 
         u_ref = np.full((grid.lmax, grid.mmax), np.nan)
@@ -667,6 +941,7 @@ class Verifier:
             "xt_expected": float(config.xt_expected),
             "xt_error": float(xt_err),
             "xt_tol": float(config.xt_tol),
+            "verify_level": level,
             "lt_report": lt_value,
             "count": metrics["count"],
             "u_mae_fps": metrics["u_mae_fps"],
@@ -699,6 +974,11 @@ class Plots:
         self.grid = grid
         self.result = result
         self.verify_report = verify_report
+
+    def _plot_level(self, state):
+        nlevels = state.u.shape[2]
+        level = int(getattr(self.config, "verify_level", 0))
+        return min(max(level, 0), nlevels - 1)
 
     def plot_grid(self) -> None:
         import matplotlib.pyplot as plt
@@ -741,10 +1021,11 @@ class Plots:
 
         os.makedirs("artifacts/verification", exist_ok=True)
         output_path = "artifacts/verification/cd_baseline_solution.png"
-        output_path_2d = "artifacts/verification/cd_baseline_onedim_2d.png"
+        level = self._plot_level(state)
+        output_path_2d = f"artifacts/verification/cd_baseline_onedim_2d_level{level}.png"
 
-        p = state.p[:, :, 0] / 144.0  # psia
-        u = state.u[:, :, 0]
+        p = state.p[:, :, level] / 144.0  # psia
+        u = state.u[:, :, level]
         x = self.grid.x[:, 0]
         j_center = 0
         j_wall = self.grid.mmax - 1
@@ -754,7 +1035,7 @@ class Plots:
 
         ax0.plot(x, p[:, j_center], lw=2.0, color="#1f77b4", label="centerline")
         ax0.plot(x, p[:, j_wall], lw=2.0, color="#d62728", label="wall")
-        ax0.set_title("Static Pressure (Level 0)")
+        ax0.set_title(f"Static Pressure (Level {level})")
         ax0.set_xlabel("x")
         ax0.set_ylabel("Pressure (psia)")
         ax0.grid(alpha=0.2)
@@ -762,7 +1043,7 @@ class Plots:
 
         ax1.plot(x, u[:, j_center], lw=2.0, color="#2ca02c", label="centerline")
         ax1.plot(x, u[:, j_wall], lw=2.0, color="#9467bd", label="wall")
-        ax1.set_title("Axial Velocity (Level 0)")
+        ax1.set_title(f"Axial Velocity (Level {level})")
         ax1.set_xlabel("x")
         ax1.set_ylabel("u")
         ax1.grid(alpha=0.2)
@@ -774,9 +1055,9 @@ class Plots:
         plt.close(fig)
         print(f"Saved solution plot: {output_path}")
 
-        # 2D ONEDIM view with grid overlay (Mach field at level 0).
-        mach = np.sqrt(state.u[:, :, 0] ** 2 + state.v[:, :, 0] ** 2) / np.sqrt(
-            np.maximum(1.0e-12, self.result.metadata.get("gamma", 1.4) * state.p[:, :, 0] / state.rho[:, :, 0])
+        # 2D view with grid overlay from selected marched level.
+        mach = np.sqrt(state.u[:, :, level] ** 2 + state.v[:, :, level] ** 2) / np.sqrt(
+            np.maximum(1.0e-12, self.result.metadata.get("gamma", 1.4) * state.p[:, :, level] / state.rho[:, :, level])
         )
 
         fig2, ax2 = plt.subplots(figsize=(10, 4.8), dpi=140)
@@ -787,7 +1068,7 @@ class Plots:
             ax2.plot(self.grid.x[:, m], self.grid.y[:, m], color="white", lw=0.35, alpha=0.6)
         ax2.plot(self.grid.xw, self.grid.yw, color="k", lw=1.4, label="wall")
         ax2.plot(self.grid.xcb, self.grid.ycb, color="k", lw=1.2, ls="--", label="centerline")
-        ax2.set_title("ONEDIM Mach Field with Structured Grid Overlay")
+        ax2.set_title(f"Mach Field with Structured Grid Overlay (Level {level})")
         ax2.set_xlabel("x")
         ax2.set_ylabel("y")
         ax2.set_aspect("equal", adjustable="box")
@@ -798,7 +1079,7 @@ class Plots:
         fig2.savefig(output_path_2d, bbox_inches="tight")
         plt.show()
         plt.close(fig2)
-        print(f"Saved ONEDIM 2D plot: {output_path_2d}")
+        print(f"Saved 2D marched solution plot: {output_path_2d}")
 
     def plot_residuals(self) -> None:
         import matplotlib.pyplot as plt
@@ -1043,6 +1324,7 @@ if __name__ == "__main__":
     print(
         "verify: "
         f"XT={verify_report['xt']:.3f} (target {verify_report['xt_expected']:.3f}, err {verify_report['xt_error']:.3e}), "
+        f"verify_level={verify_report['verify_level']}, "
         f"LT={verify_report['lt_report']}, "
         f"count={verify_report['count']}, "
         f"U_MAE={verify_report['u_mae_fps']}, "
@@ -1072,7 +1354,21 @@ if __name__ == "__main__":
         f"end={verify_report['residual_end']}, "
         f"min={verify_report['residual_min']}"
     )
+    print(
+        "time march: "
+        f"enabled={config.enable_transient_stub}, "
+        f"source={verify_report['residual_source']}, "
+        f"converged={result.converged}, "
+        f"iterations={result.iterations}, "
+        f"tconv={config.tconv}"
+    )
     print(f"residual source: {verify_report['residual_source']}")
+    print(f"transient cfl_u max: {result.metadata.get('transient_cfl_u_max')}")
+    print(
+        "transient dt range: "
+        f"min={result.metadata.get('transient_dt_min')}, "
+        f"max={result.metadata.get('transient_dt_max')}"
+    )
     residual_shape = verify_report["residual_shape_check"]
     print(
         "residual shape: "
