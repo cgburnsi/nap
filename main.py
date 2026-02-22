@@ -73,7 +73,67 @@ def plot_isentropic_data(u, v, p, d, geometry, params):
     plt.tight_layout()
     plt.show()
 
-   
+
+
+
+def plot_computational_domain(geometry, params):
+    """
+    Plots the actual calculated grid nodes in both physical and 
+    computational space using the geometry dictionary.
+    """
+    lmax = params['lmax']
+    mmax = params['mmax']
+    dy = 1.0 / (mmax - 1)
+    
+    # 1. Create Physical Space Plot (X, Y)
+    plt.figure(figsize=(12, 10))
+    plt.subplot(2, 1, 1)
+    
+    for l in range(lmax):
+        x = geometry['xw'][l]
+        be = geometry['be'][l]
+        y_cb = geometry['ycb'][l]
+        
+        # Calculate physical Y for every radial point at this axial station
+        for m in range(mmax):
+            eta = m * dy
+            y_phys = (eta / be) + y_cb
+            
+            # Plot the node
+            plt.plot(x, y_phys, 'ro', markersize=1)
+            
+        # Draw vertical grid lines (constant xi)
+        y_wall = geometry['yw'][l]
+        plt.plot([x, x], [y_cb, y_wall], 'k-', linewidth=0.2)
+
+    # Draw horizontal grid lines (constant eta)
+    for m in range(mmax):
+        eta = m * dy
+        y_line = []
+        for l in range(lmax):
+            y_line.append((eta / geometry['be'][l]) + geometry['ycb'][l])
+        plt.plot(geometry['xw'], y_line, 'b-', linewidth=0.5)
+
+    plt.title('Physical Domain Mesh (Actual Calculated Nodes)')
+    plt.xlabel('X (Axial)')
+    plt.ylabel('Y (Radial)')
+    plt.axis('equal')
+    plt.grid(False)
+
+    # 2. Create Computational Space Plot (L, M)
+    plt.subplot(2, 1, 2)
+    for l in range(lmax):
+        for m in range(mmax):
+            plt.plot(l, m, 'go', markersize=1)
+            
+    plt.title('Computational Domain Mesh (Indices L, M)')
+    plt.xlabel('Axial Index (L)')
+    plt.ylabel('Radial Index (M)')
+    plt.grid(True, linestyle=':', alpha=0.5)
+    
+    plt.tight_layout()
+    plt.show()
+    
     
     
     
@@ -178,11 +238,6 @@ def setup_geometry(params):
     return geometry
 
 
-def calculate_grid_mapping(geometry, params):
-    
-    return geometry
-
-
 def solve_mach_newton(area_ratio, gamma, is_supersonic, mn_guess):
     """
     Newton-Raphson solver for the Area-Mach relation.
@@ -278,6 +333,36 @@ def set_initial_conditions(u, v, p, d, params, geometry):
     return u, v, p, d
 
 
+def calculate_grid_mapping(geometry, params):
+    # Step 1e - Mapping (Calculate transformation functions for grid)
+    lmax = params['lmax']
+    mmax = params['mmax']
+    dy = 1.0 / (mmax - 1)
+    
+    # Initialize the mapping coefficient arrays
+    geometry['be'] = np.zeros(lmax)
+    geometry['al'] = np.zeros((lmax, mmax))
+    geometry['de'] = np.zeros((lmax, mmax))
+    
+    for l in range(lmax):
+        # Beta calculation: 1 / local height
+        height = geometry['yw'][l] - geometry['ycb'][l]
+        be = 1.0 / height
+        geometry['be'][l] = be
+        
+        for m in range(mmax):
+            y_comp = m * dy # Normalized radial coordinate (0 to 1)
+            
+            # Alpha: accounts for wall and centerbody slopes
+            geometry['al'][l, m] = be * (geometry['nxnycb'][l] + y_comp * (geometry['nxny'][l] - geometry['nxnycb'][l]))
+            
+            # Delta: accounts for axial grid stretching
+            geometry['de'][l, m] = -be * y_comp * geometry['xwi'][l]
+            
+    return geometry
+
+
+
 
 
 
@@ -342,7 +427,7 @@ if __name__ == '__main__':
     # Step 3 - Plotting and Reporting
     plot_wall_grid(geometry)
     plot_isentropic_data(u, v, p, d, geometry, params)
-    
+    plot_computational_domain(geometry, params)
     
     
     
