@@ -447,89 +447,82 @@ def calculate_time_step(u, v, p, d, n, params):
 def call_inter(u, v, p, d, n1, n3, dt, params, geometry, step_type='predictor'):
     """
     Step 2b/2d - Interior Solver (MacCormack Step).
-    Translates the logic from inter.f[cite: 4, 11].
+    Strictly follows axis/interior branching from inter.f to prevent 1/0 errors.
     """
-    gamma = params['gamma']
+    gamma, ndim = params['gamma'], params['ndim']
     dxr = 1.0 / params['dx']
-    dyr = 1.0 / (1.0 / (params['mmax'] - 1)) # DYR = 1/DY
-    ndim = params['ndim']
-    lmax = params['lmax']
-    mmax = params['mmax']
+    dyr = 1.0 / (1.0 / (params['mmax'] - 1))
+    lmax, mmax = params['lmax'], params['mmax']
     
-    # ICHAR logic from inter.f: Predictor = 1, Corrector = 2 [cite: 10]
     ichar = 1 if step_type == 'predictor' else 2
-    
-    # Start/End indices for loops 
-    # Fortran DO 30 L=2,LMAX (Predictor) or DO 70 L=2,L1 (Corrector)
     l_start = 1
+    # Predictor loops to LMAX, Corrector to LMAX-1
     l_end = (lmax - 1) if ichar == 1 else (lmax - 2)
-    m_start = 0 # Symmetry axis (M=1 in Fortran)
-    m_end = mmax - 1 # Wall (M1 in Fortran)
+    m_end = mmax - 2 # Interior points exclude the wall boundary
 
     for l in range(l_start, l_end + 1):
-        for m in range(m_start, m_end): # Interior and axis points
-            # Mapping values from Step 1e 
-            al = geometry['al'][l, m]
-            be = geometry['be'][l]
-            de = geometry['de'][l, m]
-            
-            # Current values 
-            ub = u[l, m, n1] if ichar == 1 else u[l, m, n3]
-            vb = v[l, m, n1] if ichar == 1 else v[l, m, n3]
-            pb = p[l, m, n1] if ichar == 1 else p[l, m, n3]
-            rob = d[l, m, n1] if ichar == 1 else d[l, m, n3]
-            asb = gamma * pb / rob
-            
-            # 1. Spatial Derivatives (Backward for Predictor, Forward for Corrector) 
-            if ichar == 1: # Predictor (Backward differences)
-                dudx = (ub - u[l-1, m, n1]) * dxr
-                dpdx = (pb - p[l-1, m, n1]) * dxr
-                drodx = (rob - d[l-1, m, n1]) * dxr
-                dvdx = (vb - v[l-1, m, n1]) * dxr
-                if m == 0: # Symmetry Axis
-                    dvdy = (4.0 * v[l, 1, n1] - v[l, 2, n1]) * 0.5 * dyr
-                    dudy = dvdy = dpdy = drody = 0.0
-                else: # Interior
-                    dudy = (ub - u[l, m-1, n1]) * dyr
-                    dvdy = (vb - v[l, m-1, n1]) * dyr
-                    dpdy = (pb - p[l, m-1, n1]) * dyr
-                    drody = (rob - d[l, m-1, n1]) * dyr
-            else: # Corrector (Forward differences)
-                dudx = (u[l+1, m, n3] - ub) * dxr
-                dpdx = (p[l+1, m, n3] - pb) * dxr
-                drodx = (d[l+1, m, n3] - rob) * dxr
-                dvdx = (v[l+1, m, n3] - vb) * dxr
-                if m == 0: # Symmetry Axis
-                    dvdy = (4.0 * v[l, 1, n3] - v[l, 2, n3]) * 0.5 * dyr
-                    dudy = dvdy = dpdy = drody = 0.0
-                else: # Interior
-                    dudy = (u[l, m+1, n3] - ub) * dyr
-                    dvdy = (v[l, m+1, n3] - vb) * dyr
-                    dpdy = (p[l, m+1, n3] - pb) * dyr
-                    drody = (d[l, m+1, n3] - rob) * dyr
+        for m in range(0, m_end + 1):
+            n_idx = n1 if ichar == 1 else n3
+            l_ref = l-1 if ichar == 1 else l+1
+            m_ref = m-1 if ichar == 1 else m+1
 
-            # 2. RHS Calculations 
-            uvb = ub * al + vb * be + de
-            aterm = (rob * vb / (m * (1.0/(mmax-1)) / be + geometry['ycb'][l])) if ndim == 1 else 0.0
-            
-            urhs = -ub * dudx - uvb * dudy - (dpdx + al * dpdy) / rob
-            vrhs = -ub * dvdx - uvb * dvdy - be * dpdy / rob
-            rorhs = -ub * drodx - uvb * drody - rob * (dudx + al * dudy + be * dvdy) - aterm
-            prhs = -ub * dpdx - uvb * dpdy + asb * (rorhs + ub * drodx + uvb * drody)
+            ub, vb, pb, rob = u[l,m,n_idx], v[l,m,n_idx], p[l,m,n_idx], d[l,m,n_idx]
+            asb, be = gamma * pb / rob, geometry['be'][l]
 
-            # 3. Step Forward 
-            if ichar == 1: # Predictor
+            if m == 0: # Symmetry Axis (M=1 branch in inter.f)
+                dudx = (ub - u[l_ref, m, n_idx]) * dxr if ichar == 1 else (u[l_ref, m, n_idx] - ub) * dxr
+                dpdx = (pb - p[l_ref, m, n_idx]) * dxr if ichar == 1 else (p[l_ref, m, n_idx] - pb) * dxr
+                drodx = (rob - d[l_ref, m, n_idx]) * dxr if ichar == 1 else (d[l_ref, m, n_idx] - rob) * dxr
+                # Special radial derivative for axis
+                dvdy = (4.0 * v[l, 1, n_idx] - v[l, 2, n_idx]) * 0.5 * dyr
+                
+                urhs = -ub * dudx - dpdx / rob
+                # Axisymmetric RORHS includes (1+NDIM) factor
+                rorhs = -ub * drodx - rob * dudx - (1 + ndim) * rob * be * dvdy
+                prhs = -ub * dpdx + asb * (rorhs + ub * drodx)
+                v[l, m, n3] = 0.0 # Force zero radial velocity on axis
+            else: # Interior Points (M > 1 branch in inter.f)
+                al, de = geometry['al'][l, m], geometry['de'][l, m]
+                uvb = ub * al + vb * be + de
+                
+                dudx = (ub - u[l_ref, m, n_idx]) * dxr if ichar == 1 else (u[l_ref, m, n_idx] - ub) * dxr
+                dvdx = (vb - v[l_ref, m, n_idx]) * dxr if ichar == 1 else (v[l_ref, m, n_idx] - vb) * dxr
+                dpdx = (pb - p[l_ref, m, n_idx]) * dxr if ichar == 1 else (p[l_ref, m, n_idx] - pb) * dxr
+                drodx = (rob - d[l_ref, m, n_idx]) * dxr if ichar == 1 else (d[l_ref, m, n_idx] - rob) * dxr
+                
+                dudy = (ub - u[l, m_ref, n_idx]) * dyr if ichar == 1 else (u[l, m_ref, n_idx] - ub) * dyr
+                dvdy = (vb - v[l, m_ref, n_idx]) * dyr if ichar == 1 else (v[l, m_ref, n_idx] - vb) * dyr
+                dpdy = (pb - p[l, m_ref, n_idx]) * dyr if ichar == 1 else (p[l, m_ref, n_idx] - pb) * dyr
+                drody = (rob - d[l, m_ref, n_idx]) * dyr if ichar == 1 else (d[l, m_ref, n_idx] - rob) * dyr
+                
+                # ATERM bypasses at m=0 to prevent division by zero
+                radius = m * (1.0 / (mmax - 1)) / be + geometry['ycb'][l]
+                aterm = (rob * vb / radius) if ndim == 1 else 0.0
+                
+                urhs = -ub * dudx - uvb * dudy - (dpdx + al * dpdy) / rob
+                vrhs = -ub * dvdx - uvb * dvdy - be * dpdy / rob
+                rorhs = -ub * drodx - uvb * drody - rob * (dudx + al * dudy + be * dvdy) - aterm
+                prhs = -ub * dpdx - uvb * dpdy + asb * (rorhs + ub * drodx + uvb * drody)
+                
+                if ichar == 1: v[l, m, n3] = v[l, m, n1] + vrhs * dt
+                else: v[l, m, n3] = (v[l, m, n1] + v[l, m, n3] + vrhs * dt) * 0.5
+            
+            # Step forward for U, P, and Density
+            if ichar == 1:
                 u[l, m, n3] = u[l, m, n1] + urhs * dt
-                v[l, m, n3] = v[l, m, n1] + vrhs * dt if m != 0 else 0.0
                 p[l, m, n3] = p[l, m, n1] + prhs * dt
                 d[l, m, n3] = d[l, m, n1] + rorhs * dt
-            else: # Corrector (Average)
+            else:
                 u[l, m, n3] = (u[l, m, n1] + u[l, m, n3] + urhs * dt) * 0.5
-                v[l, m, n3] = (v[l, m, n1] + v[l, m, n3] + vrhs * dt) * 0.5 if m != 0 else 0.0
                 p[l, m, n3] = (p[l, m, n1] + p[l, m, n3] + prhs * dt) * 0.5
                 d[l, m, n3] = (d[l, m, n1] + d[l, m, n3] + rorhs * dt) * 0.5
+            
+            # Clamp to prevent non-physical negatives during transients
+            if p[l, m, n3] <= 0: p[l, m, n3] = 0.001 * params['pc']
+            if d[l, m, n3] <= 0: d[l, m, n3] = 0.001 / params['g']
 
     return u, v, p, d
+
 
 
 def apply_inlet_bc(u, v, p, d, n1, n3, dt, params, geometry):
@@ -732,8 +725,8 @@ def run_simulation(u, v, p, d, params, geometry):
     # The main time loop from Fortran: DO 650 N=1,NMAX.
     for n in range(params['nmax']):
         # Indices for current (n1) and next (n3) time steps
-        n1 = n % 2
-        n3 = (n + 1) % 2
+        n1, n3 = n % 2, (n + 1) % 2
+        params['iteration_count'] = n
         
         # Step 2a - Calculate Time Step (CFL condition)
         # Calculates DT based on the Courant-Friedrichs-Lewy stability criterion.
@@ -746,14 +739,13 @@ def run_simulation(u, v, p, d, params, geometry):
         # Step 2c - Boundary Conditions (INLET, WALL, EXITT)
         # Updates the predicted values at the boundaries using characteristic methods[cite: 1, 2].
         u, v, p, d = apply_boundary_conditions(u, v, p, d, n1, n3, dt, params, geometry)
-
+        
         # Step 2d - Corrector Step (INTER - second MacCormack Step)
         # Uses forward differences and averages with predictor values for 2nd order accuracy.
         u, v, p, d = call_inter(u, v, p, d, n1, n3, dt, params, geometry, step_type='corrector')
-        
         # Re-apply boundaries to the corrected solution.
         u, v, p, d = apply_boundary_conditions(u, v, p, d, n1, n3, dt, params, geometry)
-
+        
         # Step 2e - ConvergencyTCONV (check delu/u)
         # Checks if the maximum change in axial velocity is below tolerance.
         if check_convergence(u, n1, n3, params):
@@ -761,8 +753,8 @@ def run_simulation(u, v, p, d, params, geometry):
             break    
         
         # Step 2f - Calculate mass flowrate and thrust (MASFLO)        
-        calculate_performance(u, v, p, d, n, params, geometry)
-            
+        calculate_performance(u, v, p, d, n3, params, geometry)            
+        
     return u, v, p, d, params, geometry
 
 
