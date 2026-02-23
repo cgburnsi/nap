@@ -362,11 +362,6 @@ def calculate_grid_mapping(geometry, params):
     return geometry
 
 
-
-
-
-
-
 def initalize_simulation():
     ''' Initalization of simulation. '''    
     # Step 1 - Initialization (MAIN, GEOM, ONEDIM)
@@ -390,6 +385,7 @@ def initalize_simulation():
               'ndim': 1,                # 1 for Axisymmetric, 0 for Planar
               'pc': 100.0,              # Stagnation Pressure (psia)
               'tc': 530.0,              # Stagnation Temperature (degR)
+              'ftd': 1.6,               # Fractional Delta Time (maybe?)
               }
                 
     
@@ -409,30 +405,59 @@ def initalize_simulation():
     geometry = calculate_grid_mapping(geometry, params)
     
     return u, v, p, d, params, geometry
-    
+  
 
 
-if __name__ == '__main__':
+
+
+
+
+
+
+
+
+
+
+
+
+
+def calculate_time_step(u, v, p, d, n, params):
+    """
+    Step 2a - Calculate Time Step using NAP standard FDT.
+    """
+    gamma = params['gamma']
+    rgas = params['rgas']
+    g = params['g']
+    dx = params['dx']
+    fdt = params.get('fdt', 1.6) # Updated per NAP p.36
+
+    # Calculate local sound speed
+    # a = sqrt(gamma * P * 144 * g / d)
+    a_sound = np.sqrt(gamma * p[:, :, n] * 144.0 * g / d[:, :, n])
+
+    # Wave speeds in the axial direction
+    wave_speed = np.abs(u[:, :, n]) + a_sound
     
-    u, v, p, d, params, geometry = initalize_simulation()
+    # Global minimum delta t
+    dt_min = np.min(dx / wave_speed)
     
-    # Step 2 - Time Integration Loop (MAIN)
-    # Step 2a - Calculate Time Step (CFL condition)
-    # Step 2b - Predictor Step (INTER - first MacCormack Step)
-    # Step 2c - Boundary Conditions (INLET, WALL, EXITT)
-    # Step 2d - Corrector Step (INTER - second MacCormack Step)
-    # Step 2e - ConvergencyTCONV (check delu/u)
-    # Step 2f - Calculate mass flowrate and thrust (MASFLO)
+    return fdt * dt_min
+  
+
+def call_inter(u, v, p, d, n1, n3, params, step_type='predictor'):
+   
+    return u, v, p, d
+
+def apply_boundary_conditions(u, v, p, d, n3, params, geometry):
     
-    # Step 3 - Plotting and Reporting
-    plot_wall_grid(geometry)
-    plot_isentropic_data(u, v, p, d, geometry, params)
-    plot_computational_domain(geometry, params)
+    return u, v, p, d
+
+def check_convergence(u, n1, n3, params):
     
-    
-    
-'''# Step 2 - Time Integration Loop (MAIN)
-def run_simulation(u, v, p, ro, params, geometry):
+    return True
+
+
+def run_simulation(u, v, p, d, params, geometry):
     # The main time loop from Fortran: DO 650 N=1,NMAX.
     for n in range(params['nmax']):
         # Indices for current (n1) and next (n3) time steps
@@ -441,33 +466,55 @@ def run_simulation(u, v, p, ro, params, geometry):
         
         # Step 2a - Calculate Time Step (CFL condition)
         # Calculates DT based on the Courant-Friedrichs-Lewy stability criterion.
-        dt = calculate_time_step(u, v, p, ro, n1, params)
+        dt = calculate_time_step(u, v, p, d, n1, params)
 
         # Step 2b - Predictor Step (INTER - first MacCormack Step)
         # Uses backward finite differences to predict flow at N+1.
-        u, v, p, ro = call_inter(u, v, p, ro, n1, n3, params, step_type='predictor')
+        u, v, p, d = call_inter(u, v, p, d, n1, n3, params, step_type='predictor')
 
         # Step 2c - Boundary Conditions (INLET, WALL, EXITT)
         # Updates the predicted values at the boundaries using characteristic methods[cite: 1, 2].
-        u, v, p, ro = apply_boundary_conditions(u, v, p, ro, n3, params, geometry)
+        u, v, p, d = apply_boundary_conditions(u, v, p, d, n3, params, geometry)
 
         # Step 2d - Corrector Step (INTER - second MacCormack Step)
         # Uses forward differences and averages with predictor values for 2nd order accuracy.
-        u, v, p, ro = call_inter(u, v, p, ro, n1, n3, params, step_type='corrector')
+        u, v, p, d = call_inter(u, v, p, d, n1, n3, params, step_type='corrector')
         
         # Re-apply boundaries to the corrected solution.
-        u, v, p, ro = apply_boundary_conditions(u, v, p, ro, n3, params, geometry)
+        u, v, p, d = apply_boundary_conditions(u, v, p, d, n3, params, geometry)
 
         # Step 2e - ConvergencyTCONV (check delu/u)
         # Checks if the maximum change in axial velocity is below tolerance.
         if check_convergence(u, n1, n3, params):
             print(f"Converged at step {n}")
-            break
+            break    
+        
+        # Step 2f - Calculate mass flowrate and thrust (MASFLO)        
+        
+    return u, v, p, d, params, geometry
 
-# Step 3 - Plotting and Reporting
-# Equivalent to CALL MASFLO and CALL PLOT in the Fortran code.
-def report_results(u, v, p, ro, n3, params):
-    # Calculate final mass flow and thrust.
-    # Generate output tables and visualization plots.
-    pass
-'''
+
+
+
+
+
+
+
+if __name__ == '__main__':
+    
+    # Step 1 - Initialization (MAIN, GEOM, ONEDIM)
+    u, v, p, d, params, geometry = initalize_simulation()
+    
+    # Step 2 - Time Integration Loop (MAIN)
+    u, v, p, d, params, geometry = run_simulation(u, v, p, d, params, geometry)
+    
+    
+    # Step 3 - Plotting and Reporting
+    #plot_wall_grid(geometry)
+    #plot_isentropic_data(u, v, p, d, geometry, params)
+    #plot_computational_domain(geometry, params)
+    
+    
+
+
+
