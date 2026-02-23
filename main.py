@@ -524,52 +524,80 @@ def call_inter(u, v, p, d, n1, n3, dt, params, geometry, step_type='predictor'):
     return u, v, p, d
 
 
-
 def apply_inlet_bc(u, v, p, d, n1, n3, dt, params, geometry):
-    # Logic from inlet.f 
-    gamma, rgas, g = params['gamma'], params['rgas'], params['g']
-    mmax, dxr = params['mmax'], 1.0 / params['dx']
-    dy = 1.0 / (mmax - 1)
-    dyr = 1.0 / dy
+    """
+    Step 2c - Inlet Boundary Condition.
+    Solves for the inlet state using characteristic variables and total properties.
+    Includes stabilization for the iterative solver.
+    """
+    gamma = params['gamma']
+    rgas = params['rgas']
+    g = params['g']
+    mmax = params['mmax']
+    dxr = 1.0 / params['dx']
+    
     gam1 = gamma / (gamma - 1.0)
     gam2 = (gamma - 1.0) / 2.0
+    grgb = gamma * rgas * g
 
     for m in range(mmax):
-        # Local mapping and initial values
-        al, be, de = geometry['al'][0, m], geometry['be'][0], geometry['de'][0, m]
-        u2, p2, d2 = u[0, m, n1], p[0, m, n1], d[0, m, n1]
+        # 1. Characteristic Origin (X2) Interpolation
+        # Current state at the boundary
+        u0 = u[0, m, n1]
+        p0 = p[0, m, n1]
+        d0 = d[0, m, n1]
+        a0 = np.sqrt(gamma * p0 * 144.0 * g / d0)
+        
+        # Characteristic distance back into the interior
+        dist = (u0 - a0) * dt
+        weight = -dist * dxr # Weighting factor for interpolation
+
+        # Interpolate properties at the characteristic origin (X2)
+        u2 = u0 + (u[1, m, n1] - u0) * weight
+        p2 = p0 + (p[1, m, n1] - p0) * weight
+        d2 = d0 + (d[1, m, n1] - d0) * weight
         a2 = np.sqrt(gamma * p2 * 144.0 * g / d2)
+
+        # 2. Iterative Solve for Boundary State (MN3)
+        # Initial guess for Mach number from previous time step
+        mn3 = u[0, m, n3] / a0 if u[0, m, n3] > 1e-9 else 0.05
         
-        # Characteristic backstep (X2) calculation
-        # x2 is the location upstream from where the characteristic originated
-        x2 = (u2 - a2) * 0.5 * dt
-        
-        # Linear interpolation for properties at X2
-        # Here we simplify the BU/BP logic from the Fortran loop
-        u_interp = u2 + (u[1, m, n1] - u2) * dxr * x2
-        p_interp = p2 + (p[1, m, n1] - p2) * dxr * x2
-        d_interp = d2 + (d[1, m, n1] - d2) * dxr * x2
-        
-        # Solve for boundary Mach (MN3) via iteration
-        mn3 = np.sqrt(u[0, m, n3]**2 + v[0, m, n3]**2) / a2 if u[0, m, n3] != 0 else 0.01
-        for _ in range(10):
+        for _ in range(20): # Iterate to converge on the new Mach number
+            # Limit Mach number to prevent overflow during transients
+            mn3 = max(1e-5, min(mn3, 0.95))
+            
             dem = 1.0 + gam2 * mn3**2
+            
+            # Calculate new total pressure and temperature based on guess
             p_new = params['pc'] / (dem**gam1)
             t_new = params['tc'] / dem
             
-            # Compatibility equation for U
-            # U = U2 + (P_new - P2) / (rho * a) ...
-            u[0, m, n3] = u_interp + (p_new - p_interp) / (d_interp * a2)
-            v[0, m, n3] = 0.0 # Standard axial inlet assumption
+            # Prevent division by zero if T_new gets too small
+            if t_new < 1e-9: t_new = 1e-9
+
+            # Compatibility Equation: Connects boundary to interior state
+            # This updates the velocity based on the pressure change
+            u[0, m, n3] = u2 + (p_new - p2) / (d2 * a2)
             
-            mn3_new = u[0, m, n3] / np.sqrt(gamma * rgas * g * t_new)
-            if abs(mn3_new - mn3) < 0.001: break
-            mn3 = mn3_new
+            # Calculate the new Mach number from the updated velocity and temp
+            a_new = np.sqrt(grgb * t_new)
+            mn3_new = u[0, m, n3] / a_new
+
+            # Check for convergence
+            if abs(mn3_new - mn3) < 1e-4:
+                break
             
-        d[0, m, n3] = p_new * 144.0 / (rgas * t_new * g)
+            # Update guess for the next iteration (with simple under-relaxation)
+            mn3 = 0.5 * (mn3 + mn3_new)
+
+        # 3. Final Update of Boundary Properties
+        v[0, m, n3] = 0.0 # Inlet is purely axial
         p[0, m, n3] = p_new
-        
+        d[0, m, n3] = p_new * 144.0 / (rgas * t_new * g)
+
     return u, v, p, d
+
+
 
 
 def apply_wall_bc(u, v, p, d, n1, n3, dt, params, geometry):
