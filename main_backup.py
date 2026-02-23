@@ -524,7 +524,7 @@ def initalize_simulation():
               'tc': 530.0,              # Stagnation Temperature (degR)
               'ftd': 1.6,               # Fractional Delta Time (maybe?)
               # --- New Shock/AV Parameters from shock.f ---
-              'iav': 0,                 # Artificial Viscosity Switch (1=On)
+              'iav': 1,                 # Artificial Viscosity Switch (1=On) 
               'cav': 1.0,               # Viscosity Coefficient 
               'xla': 1.0,               # Lambda coefficient 
               'xmu': 1.0,               # Mu coefficient 
@@ -881,14 +881,12 @@ def apply_inlet_bc(u, v, p, d, n1, n3, dt, params, geometry, step_type):
     gam2 = (gamma - 1.0) / 2.0
     grgb = gamma * rgas * g
 
-    n_state = n1 if step_type == 'predictor' else n3
-
     for m in range(mmax):
         # 1. Characteristic Origin (X2) Interpolation
         # Current state at the boundary
-        u0 = u[0, m, n_state]
-        p0 = p[0, m, n_state]
-        d0 = d[0, m, n_state]
+        u0 = u[0, m, n1]
+        p0 = p[0, m, n1]
+        d0 = d[0, m, n1]
         a0 = np.sqrt(gamma * p0 * 144.0 * g / d0)
         
         # Characteristic distance back into the interior
@@ -896,9 +894,9 @@ def apply_inlet_bc(u, v, p, d, n1, n3, dt, params, geometry, step_type):
         weight = -dist * dxr # Weighting factor for interpolation
 
         # Interpolate properties at the characteristic origin (X2)
-        u2 = u0 + (u[1, m, n_state] - u0) * weight
-        p2 = p0 + (p[1, m, n_state] - p0) * weight
-        d2 = d0 + (d[1, m, n_state] - d0) * weight
+        u2 = u0 + (u[1, m, n1] - u0) * weight
+        p2 = p0 + (p[1, m, n1] - p0) * weight
+        d2 = d0 + (d[1, m, n1] - d0) * weight
         a2 = np.sqrt(gamma * p2 * 144.0 * g / d2)
 
         # 2. Iterative Solve for Boundary State (MN3)
@@ -1027,7 +1025,7 @@ def apply_wall_bc(u, v, p, d, n1, n3, dt, params, geometry, step_type='predictor
         # Step forward for Pressure (P)
         dp_characteristic = -sign*ro_avg*a_avg * (al_avg*(u_new - u2) + be_avg*(v_new - v2))
         p_source = (psi42 + a_avg*a_avg*psi12 + sign*ro_avg*a_avg*(al_avg*psi22 + be_avg*psi32)) * dt
-        p_new = p2 + (dp_characteristic + p_source) / (144.0 * g)
+        p_new = p2 + (dp_characteristic + p_source) / 144.0 # Convert back to psia
         
         # Safety checks from wall.f line 270
         if p_new <= 0: p_new = params.get('plow', 0.001) * params['pc']
@@ -1183,14 +1181,12 @@ def run_simulation(u, v, p, d, params, geometry):
         dt = calculate_time_step(u, v, p, d, n1, params)
         params['dt'] = dt # Required by calculate_shock_viscosity
 
-        q_u = np.zeros((params['lmax'], params['mmax']))
-        q_v = np.zeros((params['lmax'], params['mmax']))
-        q_p = np.zeros((params['lmax'], params['mmax']))
-        if params.get('iav', 0) == 1:
-            # Step 2b - Calculate Shock Viscosity (SHOCK IPASS=1)
-            q_u, q_v, q_p = calculate_shock_viscosity(u, v, p, d, n1, params, geometry, params['q_old'])
-            # Save current Q for the next step's relaxation (CTA)
-            params['q_old'] = {'u': q_u, 'v': q_v, 'p': q_p}
+        # Step 2b - Calculate Shock Viscosity (SHOCK IPASS=1) 
+        # This populates the QUT, QVT, QPT terms for this time step
+        q_u, q_v, q_p = calculate_shock_viscosity(u, v, p, d, n1, params, geometry, params['q_old'])
+        
+        # Save current Q for the next step's relaxation (CTA) 
+        params['q_old'] = {'u': q_u, 'v': q_v, 'p': q_p}
 
         # Step 2c - Predictor Step (INTER - first MacCormack Step)
         # Uses backward finite differences to predict flow at N+1.
@@ -1243,3 +1239,5 @@ if __name__ == '__main__':
     plot_simulation_results(u, v, p, d, geometry, params)
     plot_pressure_contours(u, v, p, d, geometry, params)    
     plot_mach_contours(u, v, p, d, geometry, params)
+
+
