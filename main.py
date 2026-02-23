@@ -522,9 +522,10 @@ def initalize_simulation():
               'ndim': 1,                # 1 for Axisymmetric, 0 for Planar
               'pc': 100.0,              # Stagnation Pressure (psia)
               'tc': 530.0,              # Stagnation Temperature (degR)
-              'pe': 5.5,                # Static exit pressure for pressure BC mode (psia)
+              'pe': 5.3,                # Static exit pressure for pressure BC mode (psia)
               'exit_bc_mode': 'pressure', # 'pressure' or 'extrapolate'
               'fdt': 0.15,              # Fractional Delta Time (time-step factor)
+              'smp': 0.03,              # Global smoothing factor
               # --- New Shock/AV Parameters from shock.f ---
               'iav': 0,                 # Artificial Viscosity Switch (1=On)
               'cav': 1.0,               # Viscosity Coefficient 
