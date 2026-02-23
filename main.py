@@ -293,7 +293,7 @@ def setup_geometry(params):
         'xw': np.zeros(lmax),
         'yw': np.zeros(lmax),
         'nxny': np.zeros(lmax),
-        'xwi': np.ones(lmax), 
+        'xwi': np.zeros(lmax),
         'ycb': np.zeros(lmax),
         'nxnycb': np.zeros(lmax)
     }
@@ -522,7 +522,9 @@ def initalize_simulation():
               'ndim': 1,                # 1 for Axisymmetric, 0 for Planar
               'pc': 100.0,              # Stagnation Pressure (psia)
               'tc': 530.0,              # Stagnation Temperature (degR)
-              'ftd': 1.6,               # Fractional Delta Time (maybe?)
+              'pe': 5.5,                # Static exit pressure for pressure BC mode (psia)
+              'exit_bc_mode': 'pressure', # 'pressure' or 'extrapolate'
+              'fdt': 0.15,              # Fractional Delta Time (time-step factor)
               # --- New Shock/AV Parameters from shock.f ---
               'iav': 0,                 # Artificial Viscosity Switch (1=On)
               'cav': 1.0,               # Viscosity Coefficient 
@@ -615,6 +617,7 @@ def calculate_shock_viscosity(u, v, p, d, n1, params, geometry, q_old):
             al1, al2 = 0.5*(geometry['al'][l-1, m] + al), 0.5*(geometry['al'][l+1, m] + al)
 
             # 3. Radial Gradients (M-Branching)
+            ty1 = ty2 = tx3 = tx4 = 0.0
             if m == 0: # Centerline Point
                 uy1 = 0.5*(u[l,1,n1] + u[l-1,1,n1] - u[l,0,n1] - u[l-1,0,n1]) * dyr
                 vy1 = 0.5*(v[l,1,n1] + v[l-1,1,n1] - v[l,0,n1] - v[l-1,0,n1]) * dyr
@@ -675,6 +678,8 @@ def calculate_shock_viscosity(u, v, p, d, n1, params, geometry, q_old):
             uxy12 = 0.5 * (ux1 + ux2 + al3*uy3 + al4*uy4)
             vxy12 = 0.5 * (vx1 + vx2 + al3*vy3 + al4*vy4)
             buy34, bvy34 = 0.5*(buy3 + buy4), 0.5*(bvy3 + bvy4)
+            txy1, txy2 = tx1 + al1*ty1, tx2 + al2*ty2
+            txy3, txy4 = tx3 + al3*ty3, tx4 + al4*ty4
             
             # 5. Viscosity Coefficients
             div = uxy12 + bvy34
@@ -693,6 +698,14 @@ def calculate_shock_viscosity(u, v, p, d, n1, params, geometry, q_old):
                     vvta = rlp2m * (bvy34 + v[l, m, n1] / y_phys) / y_phys
                     pvta = (rlp2m * v[l, m, n1]**2 / y_phys + rla2 * v[l, m, n1] * (bvy34 + uxy12)) / y_phys
                     pcta = rk * 0.5 * (be4*ty4 + be3*ty3) / y_phys
+                    duvta = rlpm * be * (vxy4 - vxy3) * dyr + rmu_term * be * (buy4 - buy3) * dyr
+                    dvvta = rlp2m * 0.5 * be * (bvy4 - bvy3) * dyr
+                    dpvta = (rlp2m + rla2) * bvy34**2 + rla2 * bvy34 * uxy12
+                    dpcta = rk * be * (be4*ty4 - be3*ty3) * dyr
+                    if abs(uvta) > abs(duvta): uvta = duvta
+                    if abs(vvta) > abs(dvvta): vvta = dvvta
+                    if abs(pvta) > abs(dpvta): pvta = dpvta
+                    if abs(pcta) > abs(dpcta): pcta = dpcta
                 else: # Axis limit label 120
                     uvta = (rla_term+rmu_term)*be*(vxy4-vxy3)*dyr + rmu_term*be*(buy4-buy3)*dyr
                     vvta = rlp2m * 0.5 * be * (bvy4 - bvy3) * dyr
@@ -700,11 +713,12 @@ def calculate_shock_viscosity(u, v, p, d, n1, params, geometry, q_old):
                     pcta = rk * be * (be4*ty4 - be3*ty3) * dyr
 
             # 7. Final Accumulation
-            q_u[l, m] = rlp2m*(uxy2-uxy1)*dxr + al*(rlp2m*(uy4-uy3) + rla_term*(vy4-vy3))*dyr + rmu_term*be*(vxy4-buy4-vxy3+buy3)*dyr + uvta
+            q_u[l, m] = rlp2m*(uxy2-uxy1)*dxr + al*(rlp2m*(uxy4-uxy3) + rla_term*(bvy4-bvy3))*dyr + rmu_term*be*(vxy4-buy4-vxy3+buy3)*dyr + uvta
             q_v[l, m] = rmu_term*(vxy2-buy2-vxy1+buy1)*dxr + rmu_term*al*(vxy4-buy4-vxy3+buy3)*dyr + be*(rla_term*(uxy4-uxy3) + rlp2m*(bvy4-bvy3))*dyr + vvta
             
             work_diss = rlp2m*(uxy12**2 + bvy34**2) + rmu_term*(vxy12**2 + buy34**2) + 2.0*rla_term*uxy12*bvy34 + 2.0*rmu_term*buy34*vxy12
-            q_p[l, m] = d[l, m, n1] * gam_m1 * (work_diss + pvta + pcta)
+            heat_diss = rk * ((txy2 - txy1) * dxr + al * (txy4 - txy3) * dyr + be * (be4*ty4 - be3*ty3) * dyr)
+            q_p[l, m] = d[l, m, n1] * gam_m1 * (work_diss + heat_diss + pvta + pcta)
 
             # 8. Relaxation
             q_u[l, m] = cta * q_u[l, m] + (1.0 - cta) * q_old['u'][l, m]
@@ -948,93 +962,138 @@ def apply_wall_bc(u, v, p, d, n1, n3, dt, params, geometry, step_type='predictor
     Step 2c - Wall Boundary Conditions (MoC).
     Strict translation of wall.f characteristic coupling logic.
     """
-    gamma, rgas, g = params['gamma'], params['rgas'], params['g']
+    gamma, g = params['gamma'], params['g']
     mmax, lmax = params['mmax'], params['lmax']
     dxr = 1.0 / params['dx']
     dyr = 1.0 / (1.0 / (mmax - 1))
     ichar = 1 if step_type == 'predictor' else 2
     ndim = params.get('ndim', 1)
 
-    # Solve for Wall (IB=1)
-    # Note: Symmetry axis (m=0) is typically handled by inter.f axis branch.
     m = mmax - 1
     m_int = m - 1
     sign = 1.0
     dys = sign * dyr
-    y_b = 1.0 # Computational Y at wall
+    y_b = 1.0
+    l_end = (lmax - 1) if ichar == 1 else (lmax - 2)
 
-    for l in range(1, lmax):
-        # 1. Properties at current boundary point
+    for l in range(1, l_end + 1):
         u1, v1, p1, ro1 = u[l, m, n1], v[l, m, n1], p[l, m, n1], d[l, m, n1]
-        a1 = np.sqrt(gamma * p1 * 144.0 * g / ro1)
-        
-        # 2. Predicted values for wave speed calculation
+        a1 = np.sqrt(max(gamma * p1 * 144.0 * g / ro1, 1e-12))
+
         if ichar == 2:
             u3, v3, p3, ro3 = u[l, m, n3], v[l, m, n3], p[l, m, n3], d[l, m, n3]
-            a3 = np.sqrt(gamma * p3 * 144.0 * g / ro3)
+            a3 = np.sqrt(max(gamma * p3 * 144.0 * g / ro3, 1e-12))
         else:
             u3, v3, p3, ro3, a3 = u1, v1, p1, ro1, a1
 
-        # 3. Interpolating Coefficients (Radial direction)
         bu = (u1 - u[l, m_int, n1]) * dys
         bv = (v1 - v[l, m_int, n1]) * dys
         bp = (p1 - p[l, m_int, n1]) * dys
         bro = (ro1 - d[l, m_int, n1]) * dys
-        # Polynomial constants: C = Property - B*Y
-        cu, cv, cp, cro = u1 - bu*y_b, v1 - bv*y_b, p1 - bp*y_b, ro1 - bro*y_b
+        cu, cv, cp, cro = u1 - bu * y_b, v1 - bv * y_b, p1 - bp * y_b, ro1 - bro * y_b
 
-        # 4. Axial Derivatives at Boundary
-        du1 = (u1 - u[l-1, m, n1]) * dxr
-        dv1 = (v1 - v[l-1, m, n1]) * dxr
-        dp1 = (p1 - p[l-1, m, n1]) * dxr
-        dro1 = (ro1 - d[l-1, m, n1]) * dxr
+        du = (u1 - u[l-1, m, n1]) * dxr
+        dv = (v1 - v[l-1, m, n1]) * dxr
+        dp = (p1 - p[l-1, m, n1]) * dxr
+        dro = (ro1 - d[l-1, m, n1]) * dxr
+        du_m = (u[l, m_int, n1] - u[l-1, m_int, n1]) * dxr
+        dv_m = (v[l, m_int, n1] - v[l-1, m_int, n1]) * dxr
+        dp_m = (p[l, m_int, n1] - p[l-1, m_int, n1]) * dxr
+        dro_m = (d[l, m_int, n1] - d[l-1, m_int, n1]) * dxr
+        bdu = (du - du_m) * dys
+        bdv = (dv - dv_m) * dys
+        bdp = (dp - dp_m) * dys
+        bdro = (dro - dro_m) * dys
+        cdu = du - bdu * y_b
+        cdv = dv - bdv * y_b
+        cdp = dp - bdp * y_b
+        cdro = dro - bdro * y_b
 
-        # 5. Characteristic Origin (Y2) and Interpolation
         al, be, de = geometry['al'][l, m], geometry['be'][l], geometry['de'][l, m]
-        als = np.sqrt(al*al + be*be)
-        uv3 = u3*al + v3*be + de
-        
-        # Iteratively solve for Y2 (where the characteristic comes from)
+        als = np.sqrt(al * al + be * be)
+        uv3 = u3 * al + v3 * be + de
+        al2 = al
+
         y2 = y_b
+        u2, v2, p2, ro2, a2 = u1, v1, p1, ro1, a1
         for _ in range(3):
-            u2, v2, p2, ro2 = bu*y2+cu, bv*y2+cv, bp*y2+cp, bro*y2+cro
-            al2 = y2 * al # Mapping at interpolated point
-            uv2 = u2*al2 + v2*be + de
-            a2 = np.sqrt(gamma * p2 * 144.0 * g / ro2)
-            y2 = y_b - (uv2 + sign*al*als*a2 + uv3 + sign*als*a3) * dt * 0.5
+            uv2 = u2 * al2 + v2 * be + de
+            y2 = y_b - (uv2 + sign * al * als * a2 + uv3 + sign * als * a3) * dt * 0.5
+            u2 = bu * y2 + cu
+            v2 = bv * y2 + cv
+            p2 = bp * y2 + cp
+            ro2 = bro * y2 + cro
+            al2 = y2 * al
+            ad = gamma * p2 * 144.0 * g / max(ro2, 1e-12)
+            a2 = np.sqrt(max(ad, 1e-12))
 
-        # 6. PSI (Source) Terms
-        # These terms dampen the transients by accounting for axial flow changes
-        psi21 = -u1*du1 - dp1/ro1
-        psi31 = -u1*dv1
-        psi41 = -u1*dp1 + a1*a1*u1*dro1
-        
-        # Interpolated axial derivatives for PSI2 (simplified to boundary gradients)
-        psi12 = -u2*dro1 - ro2*du1 - (ro2*v2 / (geometry['ycb'][l] + y2/be) if ndim==1 else 0.0)
-        psi22 = -u2*du1 - dp1/ro2
-        psi32 = -u2*dv1
-        psi42 = -u2*dp1 + a2*a2*u2*dro1
+        du1 = du
+        dv1 = dv
+        dp1 = dp
+        dro1 = dro
+        du2 = bdu * y2 + cdu
+        dv2 = bdv * y2 + cdv
+        dp2 = bdp * y2 + cdp
+        dro2 = bdro * y2 + cdro
 
-        # 7. Solve Compatibility Equations
-        abr = geometry['nxny'][l] # Wall slope
-        al_avg, be_avg = (al2+al)*0.5/als, be/als
-        a_avg, ro_avg = (a2+a3)*0.5, (ro2+ro3)*0.5
-        
-        # Step forward for Velocity (U, V)
-        u_new = (u[l, m, n1] - abr*v[l, m, n1] + (psi21 - abr*psi31)*dt) / (1.0 + abr*abr)
+        aterm2 = 0.0
+        if ndim == 1:
+            denom2 = geometry['ycb'][l] + y2 / be
+            if abs(denom2) > 1e-12:
+                aterm2 = ro2 * v2 / denom2
+
+        psi21 = -u1 * du1 - dp1 / ro1
+        psi31 = -u1 * dv1
+        psi41 = -u1 * dp1 + a1 * a1 * u1 * dro1
+        psi12 = -u2 * dro2 - ro2 * du2 - aterm2
+        psi22 = -u2 * du2 - dp2 / ro2
+        psi32 = -u2 * dv2
+        psi42 = -u2 * dp2 + a2 * a2 * u2 * dro2
+
+        if ichar == 2:
+            du3 = (u[l+1, m, n3] - u3) * dxr
+            dv3 = (v[l+1, m, n3] - v3) * dxr
+            dp3 = (p[l+1, m, n3] - p3) * dxr
+            dro3 = (d[l+1, m, n3] - ro3) * dxr
+            aterm3 = 0.0
+            if ndim == 1:
+                denom3 = geometry['ycb'][l] + 1.0 / be
+                if abs(denom3) > 1e-12:
+                    aterm3 = ro3 * v2 / denom3
+            psi13 = -u3 * dro3 - ro3 * du3 - aterm3
+            psi23 = -u3 * du3 - dp3 / ro3
+            psi33 = -u3 * dv3
+            psi43 = -u3 * dp3 + a3 * a3 * u3 * dro3
+
+            psi21b = 0.5 * (psi21 + psi23)
+            psi31b = 0.5 * (psi31 + psi33)
+            psi41b = 0.5 * (psi41 + psi43)
+            psi12b = 0.5 * (psi12 + psi13)
+            psi22b = 0.5 * (psi22 + psi23)
+            psi32b = 0.5 * (psi32 + psi33)
+            psi42b = 0.5 * (psi42 + psi43)
+        else:
+            psi21b, psi31b, psi41b = psi21, psi31, psi41
+            psi12b, psi22b, psi32b, psi42b = psi12, psi22, psi32, psi42
+
+        abr = geometry['nxny'][l]
+        alb = 0.5 * (al2 + al) / als
+        beb = be / als
+        a1b = 0.5 * (a1 + a3)
+        a2b = 0.5 * (a2 + a3)
+        ro2b = 0.5 * (ro2 + ro3)
+
+        u_new = (u1 - abr * v1 + (psi21b - abr * psi31b) * dt) / (1.0 + abr * abr)
         v_new = -u_new * abr
-        
-        # Step forward for Pressure (P)
-        dp_characteristic = -sign*ro_avg*a_avg * (al_avg*(u_new - u2) + be_avg*(v_new - v2))
-        p_source = (psi42 + a_avg*a_avg*psi12 + sign*ro_avg*a_avg*(al_avg*psi22 + be_avg*psi32)) * dt
-        p_new = p2 + (dp_characteristic + p_source) / (144.0 * g)
-        
-        # Safety checks from wall.f line 270
-        if p_new <= 0: p_new = params.get('plow', 0.001) * params['pc']
-        
-        # Step forward for Density (RO) using entropy characteristic
-        ro_new = ro1 + (p_new - p1 - psi41*dt) / (a_avg*a_avg)
-        if ro_new <= 0: ro_new = params.get('rolow', 0.001) / g
+        p_rhs = -sign * ro2b * a2b * (alb * (u_new - u2) + beb * (v_new - v2))
+        p_rhs += (psi42b + a2b * a2b * psi12b + sign * ro2b * a2b * (alb * psi22b + beb * psi32b)) * dt
+        p_new = p2 + p_rhs / (144.0 * g)
+        if p_new <= 0.0:
+            p_new = params.get('plow', 0.001) * params['pc']
+
+        ro_new = ro1 + (p_new - p1 - psi41b * dt) / max(a1b * a1b, 1e-12)
+        if ro_new <= 0.0:
+            ro_new = params.get('rolow', 0.001) / g
 
         u[l, m, n3], v[l, m, n3], p[l, m, n3], d[l, m, n3] = u_new, v_new, p_new, ro_new
 
@@ -1044,17 +1103,26 @@ def apply_wall_bc(u, v, p, d, n1, n3, dt, params, geometry, step_type='predictor
 
 
 def apply_exit_bc(u, v, p, d, n1, n3, dt, params, geometry):
-    # Logic from exitt.f [cite: 12]
     l_exit = params['lmax'] - 1
-    
-    for m in range(params['mmax']):
-        # Simple Supersonic Outflow (Extrapolation) [cite: 12]
-        # In a fully supersonic exit, we extrapolate from the interior
-        u[l_exit, m, n3] = 2.0 * u[l_exit-1, m, n3] - u[l_exit-2, m, n3]
-        v[l_exit, m, n3] = 2.0 * v[l_exit-1, m, n3] - v[l_exit-2, m, n3]
-        p[l_exit, m, n3] = 2.0 * p[l_exit-1, m, n3] - p[l_exit-2, m, n3]
-        d[l_exit, m, n3] = 2.0 * d[l_exit-1, m, n3] - d[l_exit-2, m, n3]
-        
+    mmax = params['mmax']
+    mode = params.get('exit_bc_mode', 'pressure')
+
+    for m in range(mmax):
+        if mode == 'pressure':
+            # Pressure-driven exit boundary (closer to EXITT behavior).
+            p[l_exit, m, n3] = params['pe']
+            u[l_exit, m, n3] = 2.0 * u[l_exit-1, m, n3] - u[l_exit-2, m, n3]
+            v[l_exit, m, n3] = 2.0 * v[l_exit-1, m, n3] - v[l_exit-2, m, n3]
+            d[l_exit, m, n3] = 2.0 * d[l_exit-1, m, n3] - d[l_exit-2, m, n3]
+            if d[l_exit, m, n3] <= 0:
+                d[l_exit, m, n3] = max(d[l_exit-1, m, n3], 1e-8)
+        else:
+            # Supersonic outflow extrapolation.
+            u[l_exit, m, n3] = 2.0 * u[l_exit-1, m, n3] - u[l_exit-2, m, n3]
+            v[l_exit, m, n3] = 2.0 * v[l_exit-1, m, n3] - v[l_exit-2, m, n3]
+            p[l_exit, m, n3] = 2.0 * p[l_exit-1, m, n3] - p[l_exit-2, m, n3]
+            d[l_exit, m, n3] = 2.0 * d[l_exit-1, m, n3] - d[l_exit-2, m, n3]
+
     return u, v, p, d
 
 
