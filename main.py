@@ -9,14 +9,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from src.dtypes.solver_dtypes import CONSERVATIVE_DTYPE, PRIMITIVE_DTYPE
+from src.physics.eos.ideal_gas import (
+    IdealGasModel,
+    pressure_from_conserved,
+    sound_speed,
+    temperature_from_rho_p,
+    total_energy_density,
+)
+from src.physics.thermo.species import initialize_mass_fractions, make_inert_air_species
 
 
 # =============================================================================
 # 1. CONSTANTS AND PARAMETERS
 # =============================================================================
 
-GAMMA = 1.4
-R_GAS = 287.058
+GAS_MODEL = IdealGasModel(gamma=1.4, gas_constant=287.058)
+SPECIES_SET = make_inert_air_species()
 
 X_START = 0.0
 X_END = 1.0
@@ -92,8 +100,8 @@ def populate_primitive_derived(W):
     W["a"] = 0.0
     W["T"] = 0.0
     if np.any(mask):
-        W["a"][mask] = sound_speed(W["rho"][mask], W["p"][mask])
-        W["T"][mask] = temperature(W["rho"][mask], W["p"][mask])
+        W["a"][mask] = sound_speed(W["rho"][mask], W["p"][mask], GAS_MODEL)
+        W["T"][mask] = temperature_from_rho_p(W["rho"][mask], W["p"][mask], GAS_MODEL)
     return W
 
 
@@ -115,34 +123,7 @@ def conservative_linear_combo(shape, terms):
 
 
 # =============================================================================
-# 3. EQUATION OF STATE
-# =============================================================================
-
-def pressure_from_internal_energy(rho, e):
-    """p = (gamma - 1) * rho * e"""
-    return (GAMMA - 1.0) * rho * e
-
-
-def sound_speed(rho, p):
-    """a = sqrt(gamma * p / rho)"""
-    return np.sqrt(GAMMA * p / rho)
-
-
-def temperature(rho, p):
-    """T = p / (rho * R)"""
-    return p / (rho * R_GAS)
-
-
-def total_energy(rho, u, p, v=0.0):
-    """
-    Total energy per unit volume.
-    E = p / (gamma - 1) + 0.5 * rho * (u^2 + v^2)
-    """
-    return p / (GAMMA - 1.0) + 0.5 * rho * (u**2 + v**2)
-
-
-# =============================================================================
-# 4. CONSERVED <-> PRIMITIVE VARIABLE CONVERSIONS
+# 3. CONSERVED <-> PRIMITIVE VARIABLE CONVERSIONS
 # =============================================================================
 
 def prim_to_cons(W):
@@ -157,7 +138,7 @@ def prim_to_cons(W):
     U["rho"] = rho
     U["rhou"] = rho * u
     U["rhov"] = rho * v
-    U["rhoE"] = total_energy(rho, u, p, v)
+    U["rhoE"] = total_energy_density(rho, u, p, GAS_MODEL, v)
     return U
 
 
@@ -171,8 +152,7 @@ def cons_to_prim(U):
 
     u = rhou / rho
     v = rhov / rho
-    kinetic = 0.5 * (rhou**2 + rhov**2) / rho
-    p = (GAMMA - 1.0) * (rhoE - kinetic)
+    p = pressure_from_conserved(rho, rhou, rhov, rhoE, GAS_MODEL)
 
     W = zeros_primitive(U_in.shape)
     W["rho"] = rho
@@ -193,7 +173,7 @@ def check_physical(U, location=""):
 
 
 # =============================================================================
-# 5. PHYSICAL FLUX
+# 4. PHYSICAL FLUX
 # =============================================================================
 
 def euler_flux(U):
@@ -203,7 +183,7 @@ def euler_flux(U):
     rhou = U_in["rhou"]
     rhoE = U_in["rhoE"]
     u = rhou / rho
-    p = (GAMMA - 1.0) * (rhoE - 0.5 * rhou**2 / rho)
+    p = pressure_from_conserved(rho, rhou, np.zeros_like(rhou), rhoE, GAS_MODEL)
 
     F = zeros_conservative(U_in.shape)
     F["rho"] = rhou
@@ -220,7 +200,7 @@ def max_wave_speed(U):
 
 
 # =============================================================================
-# 6. HLLC RIEMANN SOLVER
+# 5. HLLC RIEMANN SOLVER
 # =============================================================================
 
 def hllc_flux(U_L, U_R):
@@ -243,8 +223,9 @@ def hllc_flux(U_L, U_R):
     a_bar = 0.5 * (a_L + a_R)
     p_star = max(0.5 * (p_L + p_R) - 0.5 * (u_R - u_L) * rho_bar * a_bar, 0.0)
 
-    q_L = 1.0 if p_star <= p_L else np.sqrt(1 + (GAMMA + 1) / (2 * GAMMA) * (p_star / p_L - 1))
-    q_R = 1.0 if p_star <= p_R else np.sqrt(1 + (GAMMA + 1) / (2 * GAMMA) * (p_star / p_R - 1))
+    gamma = GAS_MODEL.gamma
+    q_L = 1.0 if p_star <= p_L else np.sqrt(1 + (gamma + 1) / (2 * gamma) * (p_star / p_L - 1))
+    q_R = 1.0 if p_star <= p_R else np.sqrt(1 + (gamma + 1) / (2 * gamma) * (p_star / p_R - 1))
 
     S_L = u_L - a_L * q_L
     S_R = u_R + a_R * q_R
@@ -288,10 +269,11 @@ def hllc_flux_batch(U_L, U_R):
 
     u_L = rhou_L / rho_L
     u_R = rhou_R / rho_R
-    p_L = (GAMMA - 1.0) * (E_L - 0.5 * rhou_L**2 / rho_L)
-    p_R = (GAMMA - 1.0) * (E_R - 0.5 * rhou_R**2 / rho_R)
-    a_L = np.sqrt(GAMMA * p_L / rho_L)
-    a_R = np.sqrt(GAMMA * p_R / rho_R)
+    p_L = pressure_from_conserved(rho_L, rhou_L, np.zeros_like(rhou_L), E_L, GAS_MODEL)
+    p_R = pressure_from_conserved(rho_R, rhou_R, np.zeros_like(rhou_R), E_R, GAS_MODEL)
+    a_L = sound_speed(rho_L, p_L, GAS_MODEL)
+    a_R = sound_speed(rho_R, p_R, GAS_MODEL)
+    gamma = GAS_MODEL.gamma
 
     rho_bar = 0.5 * (rho_L + rho_R)
     a_bar = 0.5 * (a_L + a_R)
@@ -300,12 +282,12 @@ def hllc_flux_batch(U_L, U_R):
     q_L = np.where(
         p_star <= p_L,
         1.0,
-        np.sqrt(1 + (GAMMA + 1) / (2 * GAMMA) * (p_star / p_L - 1)),
+        np.sqrt(1 + (gamma + 1) / (2 * gamma) * (p_star / p_L - 1)),
     )
     q_R = np.where(
         p_star <= p_R,
         1.0,
-        np.sqrt(1 + (GAMMA + 1) / (2 * GAMMA) * (p_star / p_R - 1)),
+        np.sqrt(1 + (gamma + 1) / (2 * gamma) * (p_star / p_R - 1)),
     )
 
     S_L = u_L - a_L * q_L
@@ -352,7 +334,7 @@ def hllc_flux_batch(U_L, U_R):
 
 
 # =============================================================================
-# 7. SLOPE LIMITERS
+# 6. SLOPE LIMITERS
 # =============================================================================
 
 def minmod(r):
@@ -388,7 +370,7 @@ def apply_limiter(limiter_code, r):
 
 
 # =============================================================================
-# 8. MUSCL RECONSTRUCTION
+# 7. MUSCL RECONSTRUCTION
 # =============================================================================
 
 def primitive_from_dense_triplets(W_dense):
@@ -449,7 +431,7 @@ def first_order_states(U):
 
 
 # =============================================================================
-# 9. BOUNDARY CONDITIONS
+# 8. BOUNDARY CONDITIONS
 # =============================================================================
 
 def apply_boundary_conditions(U_L, U_R, U, bc_left, bc_right):
@@ -480,7 +462,7 @@ def apply_boundary_conditions(U_L, U_R, U, bc_left, bc_right):
 
 
 # =============================================================================
-# 10. RESIDUAL ASSEMBLY
+# 9. RESIDUAL ASSEMBLY
 # =============================================================================
 
 def compute_residual(U, dx, scheme, limiter_code):
@@ -500,7 +482,7 @@ def compute_residual(U, dx, scheme, limiter_code):
 
 
 # =============================================================================
-# 11. SSP-RK3 TIME INTEGRATOR
+# 10. SSP-RK3 TIME INTEGRATOR
 # =============================================================================
 
 def ssp_rk3_step(U, dt, dx, scheme, limiter_code):
@@ -518,7 +500,7 @@ def ssp_rk3_step(U, dt, dx, scheme, limiter_code):
 
 
 # =============================================================================
-# 12. CFL CONDITION
+# 11. CFL CONDITION
 # =============================================================================
 
 def compute_dt(U, dx, cfl, t, t_end):
@@ -529,7 +511,7 @@ def compute_dt(U, dx, cfl, t, t_end):
 
 
 # =============================================================================
-# 13. INITIAL CONDITIONS
+# 12. INITIAL CONDITIONS
 # =============================================================================
 
 def setup_mesh():
@@ -543,17 +525,18 @@ def setup_mesh():
 def sod_initial_condition(x_cells):
     """Initialize the Sod shock tube using structured conservative state."""
     U = zeros_conservative(len(x_cells))
+    Y = initialize_mass_fractions(len(x_cells), SPECIES_SET)
     x_diaphragm = X_START + DIAPHRAGM * (X_END - X_START)
 
     for i, x in enumerate(x_cells):
         rho, u, p = W_LEFT if x < x_diaphragm else W_RIGHT
         U[i] = prim_to_cons(primitive_state(rho, u, p))
 
-    return U
+    return U, Y
 
 
 # =============================================================================
-# 14. ANALYTICAL SOLUTION
+# 13. ANALYTICAL SOLUTION
 # =============================================================================
 
 def sod_analytical(x_cells, t):
@@ -562,10 +545,10 @@ def sod_analytical(x_cells, t):
 
     rho_L, u_L, p_L = W_LEFT
     rho_R, u_R, p_R = W_RIGHT
-    a_L = sound_speed(rho_L, p_L)
-    a_R = sound_speed(rho_R, p_R)
+    a_L = sound_speed(rho_L, p_L, GAS_MODEL)
+    a_R = sound_speed(rho_R, p_R, GAS_MODEL)
 
-    g = GAMMA
+    g = GAS_MODEL.gamma
     g1 = (g - 1) / (2 * g)
     g2 = (g + 1) / (2 * g)
     g3 = 2 * g / (g - 1)
@@ -655,7 +638,7 @@ def sod_analytical(x_cells, t):
 
 
 # =============================================================================
-# 15. MAIN SOLVER LOOP
+# 14. MAIN SOLVER LOOP
 # =============================================================================
 
 def run_solver():
@@ -668,10 +651,12 @@ def run_solver():
     print(f"  CFL:     {CFL}")
     print(f"  t_end:   {T_END}")
     print(f"  BC:      left={BC_LEFT}, right={BC_RIGHT}")
+    print(f"  Gas:     {GAS_MODEL.name} (gamma={GAS_MODEL.gamma}, R={GAS_MODEL.gas_constant})")
+    print(f"  Species: {SPECIES_SET.names}")
     print("=" * 60)
 
     x_cells, dx = setup_mesh()
-    U = sod_initial_condition(x_cells)
+    U, Y = sod_initial_condition(x_cells)
     limiter_code = limiter_name_to_code(LIMITER)
 
     t = 0.0
@@ -702,11 +687,11 @@ def run_solver():
     print(f"\n  Done. {iteration} iterations, t={t:.4f}")
     print(f"  Mass conservation error: {abs(mass_hist[-1] - mass_hist[0]):.2e}")
 
-    return x_cells, dx, U, np.array(time_hist), np.array(mass_hist)
+    return x_cells, dx, U, Y, np.array(time_hist), np.array(mass_hist)
 
 
 # =============================================================================
-# 16. POST-PROCESSING
+# 15. POST-PROCESSING
 # =============================================================================
 
 def plot_results(x_cells, U, t_final):
@@ -764,7 +749,7 @@ def plot_conservation(time_hist, mass_hist):
 # =============================================================================
 
 if __name__ == "__main__" or True:
-    x, dx, U, time_hist, mass_hist = run_solver()
+    x, dx, U, Y, time_hist, mass_hist = run_solver()
 
     W = cons_to_prim(U)
     rho = W["rho"]
